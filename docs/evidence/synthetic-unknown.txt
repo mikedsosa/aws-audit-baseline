@@ -1,0 +1,64 @@
+aws-baseline-evidence 0.1.0
+ruleset aws-private-audit-baseline 0.1.0
+evidence_schema 1.0.0
+evidence_class synthetic_fixture
+fixture_label unknown
+deployed_aws_verified false
+input_sha256 4276db77b2d267825624038dc54fc78d7584b29ef954fad81d0d5c1a59b51fef
+input_bytes 27607
+ruleset_files_sha256 c1618db438e59d81d2a14c105e5b83b460ce74aa24f8b6bd0559c9a49c20b663
+evidence_content_sha256 027a801ae660ed1ace4b77a51d43783af08dfeaee472b6272becd252c6e94ff2
+This output is not a compliance certification and does not claim complete coverage.
+This file is not evidence of a deployed AWS account.
+Missing and unknown attributes are not counted as passes.
+
+[pass] BASE-COMP-001 aws_cloudtrail.audit_logs,aws_iam_role.auditor,aws_iam_role.workload_operator,aws_kms_key.audit_logs,aws_kms_key.workload_data,aws_s3_bucket.audit_logs,aws_s3_bucket.workload_data the planned end state has one tagged workload bucket, audit bucket, workload key, audit key, workload role, auditor role, and trail
+[pass] BASE-SCOPE-001 - known ARNs agree on account 123456789012, region us-east-1, and partition aws
+[pass] CT-DATA-001 aws_cloudtrail.audit_logs management events are explicit and data, advanced, and Insights selectors are empty lists; object access is not logged
+[unknown] CT-DEST-001 aws_cloudtrail.audit_logs,aws_s3_bucket.audit_logs audit alias target is unknown
+[unknown] CT-FLAG-001 aws_cloudtrail.audit_logs enable_log_file_validation is unknown
+[unknown] CT-S3POL-001 aws_s3_bucket.audit_logs,aws_s3_bucket_policy.audit_logs bucket policy is unknown
+[pass] DISCLAIM-001 output.deployment_status deployment_status is the draft disclaimer; it does not prove an AWS deployment
+[pass] IAM-PERM-001 aws_iam_role.auditor,aws_iam_role_policy.auditor auditor policy is read-only for the audit bucket and trail
+[pass] IAM-PERM-001 aws_iam_role.workload_operator,aws_iam_role_policy.workload_operator workload policy is limited to the app prefix
+[pass] IAM-SESSION-001 aws_iam_role.auditor max_session_duration is 3600 seconds
+[pass] IAM-SESSION-001 aws_iam_role.workload_operator max_session_duration is 3600 seconds
+[pass] IAM-TRUST-001 aws_iam_role.auditor trust policy allows only IAM users in this account and requires MFA
+[pass] IAM-TRUST-001 aws_iam_role.workload_operator trust policy allows only IAM users in this account and requires MFA
+[unknown] KMS-ALIAS-001 aws_kms_key.audit_logs an alias target_key_id is unknown
+[unknown] KMS-ALIAS-001 aws_kms_key.workload_data an alias target_key_id is unknown
+[pass] KMS-POL-001 aws_kms_key.audit_logs key policy matches the baseline statements for this component
+[pass] KMS-POL-001 aws_kms_key.workload_data key policy matches the baseline statements for this component
+[pass] KMS-ROT-001 aws_kms_key.audit_logs key rotation is enabled with a 365 day period
+[unknown] KMS-ROT-001 aws_kms_key.workload_data enable_key_rotation is unknown
+[pass] KMS-SEP-001 aws_s3_bucket.audit_logs,aws_s3_bucket.workload_data the buckets use different KMS key ids
+[pass] KMS-SPEC-001 aws_kms_key.audit_logs key is an enabled single-Region symmetric encryption key
+[pass] KMS-SPEC-001 aws_kms_key.workload_data key is an enabled single-Region symmetric encryption key
+[pass] KMS-WIN-001 aws_kms_key.audit_logs deletion window is 30 days
+[pass] KMS-WIN-001 aws_kms_key.workload_data deletion window is 30 days
+[pass] PROV-001 - the plan configuration has no provisioners
+[unknown] S3-AUDIT-DEL-001 aws_s3_bucket.audit_logs,aws_s3_bucket_policy.audit_logs bucket policy is unknown
+[pass] S3-BPA-001 aws_s3_bucket.audit_logs,aws_s3_bucket_public_access_block.audit_logs all four public access block settings are explicitly true
+[unknown] S3-BPA-001 aws_s3_bucket.workload_data,aws_s3_bucket_public_access_block.workload_data block_public_acls is unknown
+[pass] S3-DESTROY-001 aws_s3_bucket.audit_logs force_destroy is explicitly false
+[pass] S3-DESTROY-001 aws_s3_bucket.workload_data force_destroy is explicitly false
+[unknown] S3-ENC-001 aws_s3_bucket.audit_logs,aws_s3_bucket_server_side_encryption_configuration.audit_logs the alias target for this component key is unknown
+[unknown] S3-ENC-001 aws_s3_bucket.workload_data,aws_s3_bucket_server_side_encryption_configuration.workload_data the alias target for this component key is unknown
+[pass] S3-LIFE-001 aws_s3_bucket.audit_logs,aws_s3_bucket_lifecycle_configuration.audit_logs lifecycle matches the baseline retention and abort limits
+[pass] S3-LIFE-001 aws_s3_bucket.workload_data,aws_s3_bucket_lifecycle_configuration.workload_data lifecycle matches the baseline retention and abort limits
+[pass] S3-LOCK-001 aws_s3_bucket.audit_logs Object Lock is explicitly off; this pass is not an immutability control
+[pass] S3-LOCK-001 aws_s3_bucket.workload_data Object Lock is explicitly off; this pass is not an immutability control
+[pass] S3-OWN-001 aws_s3_bucket.audit_logs,aws_s3_bucket_ownership_controls.audit_logs object ownership is BucketOwnerEnforced
+[pass] S3-OWN-001 aws_s3_bucket.workload_data,aws_s3_bucket_ownership_controls.workload_data object ownership is BucketOwnerEnforced
+[unknown] S3-POLICY-001 aws_s3_bucket.audit_logs,aws_s3_bucket_policy.audit_logs bucket policy is unknown
+[pass] S3-POLICY-001 aws_s3_bucket.workload_data,aws_s3_bucket_policy.workload_data bucket policy statement IDs match the assessed set
+[unknown] S3-SSE-001 aws_s3_bucket.audit_logs,aws_s3_bucket_policy.audit_logs bucket policy is unknown
+[pass] S3-SSE-001 aws_s3_bucket.workload_data,aws_s3_bucket_policy.workload_data workload PutObject is denied unless the encryption header is aws:kms
+[unknown] S3-TLS-001 aws_s3_bucket.audit_logs,aws_s3_bucket_policy.audit_logs bucket policy is unknown
+[pass] S3-TLS-001 aws_s3_bucket.workload_data,aws_s3_bucket_policy.workload_data bucket policy denies s3:* when aws:SecureTransport is false
+[pass] S3-VER-001 aws_s3_bucket.audit_logs,aws_s3_bucket_versioning.audit_logs versioning status is Enabled
+[pass] S3-VER-001 aws_s3_bucket.workload_data,aws_s3_bucket_versioning.workload_data versioning status is Enabled
+[pass] UNSUPPORTED-TYPE-001 - every resource_changes entry is a supported managed type
+
+summary pass=34 fail=0 unknown=13 result=unknown
+exit_code 3

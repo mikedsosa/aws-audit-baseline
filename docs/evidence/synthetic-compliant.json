@@ -1,0 +1,548 @@
+{
+  "coverage": {
+    "assessed_rule_ids": [
+      "BASE-COMP-001",
+      "BASE-SCOPE-001",
+      "CT-DATA-001",
+      "CT-DEST-001",
+      "CT-FLAG-001",
+      "CT-S3POL-001",
+      "DISCLAIM-001",
+      "IAM-PERM-001",
+      "IAM-PERM-001",
+      "IAM-SESSION-001",
+      "IAM-SESSION-001",
+      "IAM-TRUST-001",
+      "IAM-TRUST-001",
+      "KMS-ALIAS-001",
+      "KMS-ALIAS-001",
+      "KMS-POL-001",
+      "KMS-POL-001",
+      "KMS-ROT-001",
+      "KMS-ROT-001",
+      "KMS-SEP-001",
+      "KMS-SPEC-001",
+      "KMS-SPEC-001",
+      "KMS-WIN-001",
+      "KMS-WIN-001",
+      "PROV-001",
+      "S3-AUDIT-DEL-001",
+      "S3-BPA-001",
+      "S3-BPA-001",
+      "S3-DESTROY-001",
+      "S3-DESTROY-001",
+      "S3-ENC-001",
+      "S3-ENC-001",
+      "S3-LIFE-001",
+      "S3-LIFE-001",
+      "S3-LOCK-001",
+      "S3-LOCK-001",
+      "S3-OWN-001",
+      "S3-OWN-001",
+      "S3-POLICY-001",
+      "S3-POLICY-001",
+      "S3-SSE-001",
+      "S3-SSE-001",
+      "S3-TLS-001",
+      "S3-TLS-001",
+      "S3-VER-001",
+      "S3-VER-001",
+      "UNSUPPORTED-TYPE-001"
+    ],
+    "certification": "none. This output is not a compliance certification and does not claim complete coverage.",
+    "not_assessed": [
+      {
+        "detail": "Bucket public access blocks do not set or prove account or organization S3 Block Public Access.",
+        "id": "account-and-organization-public-access-block"
+      },
+      {
+        "detail": "This plan is not an AWS Organizations policy and does not show SCPs, RCPs, or permission boundaries.",
+        "id": "organization-scps-rcps-permission-boundaries"
+      },
+      {
+        "detail": "Object Lock and MFA Delete are not enabled. Versioning alone does not make logs immutable.",
+        "id": "s3-object-lock-and-mfa-delete"
+      },
+      {
+        "detail": "S3 server access logging is not configured. CloudTrail management events are not object access logs.",
+        "id": "s3-server-access-logging"
+      },
+      {
+        "detail": "S3 object-level data events are not enabled. Management events do not record GetObject or PutObject data events.",
+        "id": "cloudtrail-data-events"
+      },
+      {
+        "detail": "CloudTrail Insights, Lake, CloudWatch Logs delivery, and EventBridge are not part of this stack.",
+        "id": "cloudtrail-insights-lake-cloudwatch-eventbridge"
+      },
+      {
+        "detail": "The checker can see enable_log_file_validation only. It does not download or validate digest files.",
+        "id": "cloudtrail-digest-validation-execution"
+      },
+      {
+        "detail": "recursive_logging is not set. AWS provider 5.100.0 has no such argument. The CreateTrail API default is true and was not overridden.",
+        "id": "cloudtrail-recursive-logging"
+      },
+      {
+        "detail": "GuardDuty, Security Hub, AWS Config, IAM Access Analyzer, and Macie are not deployed or queried.",
+        "id": "guardduty-securityhub-config-analyzer-macie"
+      },
+      {
+        "detail": "No VPC, endpoint, security group, or private network is in this stack. CloudTrail delivery is not forced through a VPC endpoint.",
+        "id": "network-controls"
+      },
+      {
+        "detail": "The April 2026 S3 SSE-C default is not configured or verified by this Terraform.",
+        "id": "sse-c-block-setting"
+      },
+      {
+        "detail": "Account-root kms:* delegates key administration to IAM. Other IAM policies in the account are invisible here.",
+        "id": "other-iam-in-the-account"
+      },
+      {
+        "detail": "The CloudTrail kms:Decrypt statement follows the published example and is not restricted by aws:SourceArn.",
+        "id": "cloudtrail-kms-decrypt-source-arn"
+      },
+      {
+        "detail": "A plan JSON file is not a description of a live account. This tool does not call AWS.",
+        "id": "runtime-aws-api-state"
+      },
+      {
+        "detail": "Bucket names are in the shared global namespace. This draft does not use an account regional namespace.",
+        "id": "shared-global-bucket-namespace"
+      }
+    ]
+  },
+  "evidence_content_sha256": "5b7957da84db2a28dc38031672c8715286484ef885db299180035d59a8bb1cdc",
+  "evidence_content_sha256_scope": "sha256 of canonical JSON with sorted keys and compact separators, excluding the evidence_content_sha256 field",
+  "evidence_schema_version": "1.0.0",
+  "findings": [
+    {
+      "reason": "the planned end state has one tagged workload bucket, audit bucket, workload key, audit key, workload role, auditor role, and trail",
+      "resource_addresses": [
+        "aws_cloudtrail.audit_logs",
+        "aws_iam_role.auditor",
+        "aws_iam_role.workload_operator",
+        "aws_kms_key.audit_logs",
+        "aws_kms_key.workload_data",
+        "aws_s3_bucket.audit_logs",
+        "aws_s3_bucket.workload_data"
+      ],
+      "rule_id": "BASE-COMP-001",
+      "status": "pass"
+    },
+    {
+      "reason": "known ARNs agree on account 123456789012, region us-east-1, and partition aws",
+      "resource_addresses": [],
+      "rule_id": "BASE-SCOPE-001",
+      "status": "pass"
+    },
+    {
+      "reason": "management events are explicit and data, advanced, and Insights selectors are empty lists; object access is not logged",
+      "resource_addresses": [
+        "aws_cloudtrail.audit_logs"
+      ],
+      "rule_id": "CT-DATA-001",
+      "status": "pass"
+    },
+    {
+      "reason": "trail destination is the audit bucket, cloudtrail prefix, and audit alias",
+      "resource_addresses": [
+        "aws_cloudtrail.audit_logs",
+        "aws_s3_bucket.audit_logs"
+      ],
+      "rule_id": "CT-DEST-001",
+      "status": "pass"
+    },
+    {
+      "reason": "trail logging, validation, global events, and multi-Region delivery are explicit, and the trail is not an organization trail",
+      "resource_addresses": [
+        "aws_cloudtrail.audit_logs"
+      ],
+      "rule_id": "CT-FLAG-001",
+      "status": "pass"
+    },
+    {
+      "reason": "CloudTrail can get the bucket ACL and put logs only for this trail ARN",
+      "resource_addresses": [
+        "aws_cloudtrail.audit_logs",
+        "aws_s3_bucket.audit_logs",
+        "aws_s3_bucket_policy.audit_logs"
+      ],
+      "rule_id": "CT-S3POL-001",
+      "status": "pass"
+    },
+    {
+      "reason": "deployment_status is the draft disclaimer; it does not prove an AWS deployment",
+      "resource_addresses": [
+        "output.deployment_status"
+      ],
+      "rule_id": "DISCLAIM-001",
+      "status": "pass"
+    },
+    {
+      "reason": "auditor policy is read-only for the audit bucket and trail",
+      "resource_addresses": [
+        "aws_iam_role.auditor",
+        "aws_iam_role_policy.auditor"
+      ],
+      "rule_id": "IAM-PERM-001",
+      "status": "pass"
+    },
+    {
+      "reason": "workload policy is limited to the app prefix",
+      "resource_addresses": [
+        "aws_iam_role.workload_operator",
+        "aws_iam_role_policy.workload_operator"
+      ],
+      "rule_id": "IAM-PERM-001",
+      "status": "pass"
+    },
+    {
+      "reason": "max_session_duration is 3600 seconds",
+      "resource_addresses": [
+        "aws_iam_role.auditor"
+      ],
+      "rule_id": "IAM-SESSION-001",
+      "status": "pass"
+    },
+    {
+      "reason": "max_session_duration is 3600 seconds",
+      "resource_addresses": [
+        "aws_iam_role.workload_operator"
+      ],
+      "rule_id": "IAM-SESSION-001",
+      "status": "pass"
+    },
+    {
+      "reason": "trust policy allows only IAM users in this account and requires MFA",
+      "resource_addresses": [
+        "aws_iam_role.auditor"
+      ],
+      "rule_id": "IAM-TRUST-001",
+      "status": "pass"
+    },
+    {
+      "reason": "trust policy allows only IAM users in this account and requires MFA",
+      "resource_addresses": [
+        "aws_iam_role.workload_operator"
+      ],
+      "rule_id": "IAM-TRUST-001",
+      "status": "pass"
+    },
+    {
+      "reason": "one alias targets this component key",
+      "resource_addresses": [
+        "aws_kms_alias.audit_logs",
+        "aws_kms_key.audit_logs"
+      ],
+      "rule_id": "KMS-ALIAS-001",
+      "status": "pass"
+    },
+    {
+      "reason": "one alias targets this component key",
+      "resource_addresses": [
+        "aws_kms_alias.workload_data",
+        "aws_kms_key.workload_data"
+      ],
+      "rule_id": "KMS-ALIAS-001",
+      "status": "pass"
+    },
+    {
+      "reason": "key policy matches the baseline statements for this component",
+      "resource_addresses": [
+        "aws_kms_key.audit_logs"
+      ],
+      "rule_id": "KMS-POL-001",
+      "status": "pass"
+    },
+    {
+      "reason": "key policy matches the baseline statements for this component",
+      "resource_addresses": [
+        "aws_kms_key.workload_data"
+      ],
+      "rule_id": "KMS-POL-001",
+      "status": "pass"
+    },
+    {
+      "reason": "key rotation is enabled with a 365 day period",
+      "resource_addresses": [
+        "aws_kms_key.audit_logs"
+      ],
+      "rule_id": "KMS-ROT-001",
+      "status": "pass"
+    },
+    {
+      "reason": "key rotation is enabled with a 365 day period",
+      "resource_addresses": [
+        "aws_kms_key.workload_data"
+      ],
+      "rule_id": "KMS-ROT-001",
+      "status": "pass"
+    },
+    {
+      "reason": "the buckets use different KMS key ids",
+      "resource_addresses": [
+        "aws_s3_bucket.audit_logs",
+        "aws_s3_bucket.workload_data"
+      ],
+      "rule_id": "KMS-SEP-001",
+      "status": "pass"
+    },
+    {
+      "reason": "key is an enabled single-Region symmetric encryption key",
+      "resource_addresses": [
+        "aws_kms_key.audit_logs"
+      ],
+      "rule_id": "KMS-SPEC-001",
+      "status": "pass"
+    },
+    {
+      "reason": "key is an enabled single-Region symmetric encryption key",
+      "resource_addresses": [
+        "aws_kms_key.workload_data"
+      ],
+      "rule_id": "KMS-SPEC-001",
+      "status": "pass"
+    },
+    {
+      "reason": "deletion window is 30 days",
+      "resource_addresses": [
+        "aws_kms_key.audit_logs"
+      ],
+      "rule_id": "KMS-WIN-001",
+      "status": "pass"
+    },
+    {
+      "reason": "deletion window is 30 days",
+      "resource_addresses": [
+        "aws_kms_key.workload_data"
+      ],
+      "rule_id": "KMS-WIN-001",
+      "status": "pass"
+    },
+    {
+      "reason": "the plan configuration has no provisioners",
+      "resource_addresses": [],
+      "rule_id": "PROV-001",
+      "status": "pass"
+    },
+    {
+      "reason": "audit object and version deletes are denied for every principal, with no break-glass condition",
+      "resource_addresses": [
+        "aws_s3_bucket.audit_logs",
+        "aws_s3_bucket_policy.audit_logs"
+      ],
+      "rule_id": "S3-AUDIT-DEL-001",
+      "status": "pass"
+    },
+    {
+      "reason": "all four public access block settings are explicitly true",
+      "resource_addresses": [
+        "aws_s3_bucket.audit_logs",
+        "aws_s3_bucket_public_access_block.audit_logs"
+      ],
+      "rule_id": "S3-BPA-001",
+      "status": "pass"
+    },
+    {
+      "reason": "all four public access block settings are explicitly true",
+      "resource_addresses": [
+        "aws_s3_bucket.workload_data",
+        "aws_s3_bucket_public_access_block.workload_data"
+      ],
+      "rule_id": "S3-BPA-001",
+      "status": "pass"
+    },
+    {
+      "reason": "force_destroy is explicitly false",
+      "resource_addresses": [
+        "aws_s3_bucket.audit_logs"
+      ],
+      "rule_id": "S3-DESTROY-001",
+      "status": "pass"
+    },
+    {
+      "reason": "force_destroy is explicitly false",
+      "resource_addresses": [
+        "aws_s3_bucket.workload_data"
+      ],
+      "rule_id": "S3-DESTROY-001",
+      "status": "pass"
+    },
+    {
+      "reason": "default encryption is SSE-KMS with a bucket key and this component's alias",
+      "resource_addresses": [
+        "aws_s3_bucket.audit_logs",
+        "aws_s3_bucket_server_side_encryption_configuration.audit_logs"
+      ],
+      "rule_id": "S3-ENC-001",
+      "status": "pass"
+    },
+    {
+      "reason": "default encryption is SSE-KMS with a bucket key and this component's alias",
+      "resource_addresses": [
+        "aws_s3_bucket.workload_data",
+        "aws_s3_bucket_server_side_encryption_configuration.workload_data"
+      ],
+      "rule_id": "S3-ENC-001",
+      "status": "pass"
+    },
+    {
+      "reason": "lifecycle matches the baseline retention and abort limits",
+      "resource_addresses": [
+        "aws_s3_bucket.audit_logs",
+        "aws_s3_bucket_lifecycle_configuration.audit_logs"
+      ],
+      "rule_id": "S3-LIFE-001",
+      "status": "pass"
+    },
+    {
+      "reason": "lifecycle matches the baseline retention and abort limits",
+      "resource_addresses": [
+        "aws_s3_bucket.workload_data",
+        "aws_s3_bucket_lifecycle_configuration.workload_data"
+      ],
+      "rule_id": "S3-LIFE-001",
+      "status": "pass"
+    },
+    {
+      "reason": "Object Lock is explicitly off; this pass is not an immutability control",
+      "resource_addresses": [
+        "aws_s3_bucket.audit_logs"
+      ],
+      "rule_id": "S3-LOCK-001",
+      "status": "pass"
+    },
+    {
+      "reason": "Object Lock is explicitly off; this pass is not an immutability control",
+      "resource_addresses": [
+        "aws_s3_bucket.workload_data"
+      ],
+      "rule_id": "S3-LOCK-001",
+      "status": "pass"
+    },
+    {
+      "reason": "object ownership is BucketOwnerEnforced",
+      "resource_addresses": [
+        "aws_s3_bucket.audit_logs",
+        "aws_s3_bucket_ownership_controls.audit_logs"
+      ],
+      "rule_id": "S3-OWN-001",
+      "status": "pass"
+    },
+    {
+      "reason": "object ownership is BucketOwnerEnforced",
+      "resource_addresses": [
+        "aws_s3_bucket.workload_data",
+        "aws_s3_bucket_ownership_controls.workload_data"
+      ],
+      "rule_id": "S3-OWN-001",
+      "status": "pass"
+    },
+    {
+      "reason": "bucket policy statement IDs match the assessed set",
+      "resource_addresses": [
+        "aws_s3_bucket.audit_logs",
+        "aws_s3_bucket_policy.audit_logs"
+      ],
+      "rule_id": "S3-POLICY-001",
+      "status": "pass"
+    },
+    {
+      "reason": "bucket policy statement IDs match the assessed set",
+      "resource_addresses": [
+        "aws_s3_bucket.workload_data",
+        "aws_s3_bucket_policy.workload_data"
+      ],
+      "rule_id": "S3-POLICY-001",
+      "status": "pass"
+    },
+    {
+      "reason": "callers other than CloudTrail are limited to aws:kms, and CloudTrail may send aws:kms or AES256",
+      "resource_addresses": [
+        "aws_s3_bucket.audit_logs",
+        "aws_s3_bucket_policy.audit_logs"
+      ],
+      "rule_id": "S3-SSE-001",
+      "status": "pass"
+    },
+    {
+      "reason": "workload PutObject is denied unless the encryption header is aws:kms",
+      "resource_addresses": [
+        "aws_s3_bucket.workload_data",
+        "aws_s3_bucket_policy.workload_data"
+      ],
+      "rule_id": "S3-SSE-001",
+      "status": "pass"
+    },
+    {
+      "reason": "bucket policy denies s3:* when aws:SecureTransport is false",
+      "resource_addresses": [
+        "aws_s3_bucket.audit_logs",
+        "aws_s3_bucket_policy.audit_logs"
+      ],
+      "rule_id": "S3-TLS-001",
+      "status": "pass"
+    },
+    {
+      "reason": "bucket policy denies s3:* when aws:SecureTransport is false",
+      "resource_addresses": [
+        "aws_s3_bucket.workload_data",
+        "aws_s3_bucket_policy.workload_data"
+      ],
+      "rule_id": "S3-TLS-001",
+      "status": "pass"
+    },
+    {
+      "reason": "versioning status is Enabled",
+      "resource_addresses": [
+        "aws_s3_bucket.audit_logs",
+        "aws_s3_bucket_versioning.audit_logs"
+      ],
+      "rule_id": "S3-VER-001",
+      "status": "pass"
+    },
+    {
+      "reason": "versioning status is Enabled",
+      "resource_addresses": [
+        "aws_s3_bucket.workload_data",
+        "aws_s3_bucket_versioning.workload_data"
+      ],
+      "rule_id": "S3-VER-001",
+      "status": "pass"
+    },
+    {
+      "reason": "every resource_changes entry is a supported managed type",
+      "resource_addresses": [],
+      "rule_id": "UNSUPPORTED-TYPE-001",
+      "status": "pass"
+    }
+  ],
+  "input": {
+    "byte_length": 27388,
+    "deployed_aws_verified": false,
+    "evidence_class": "synthetic_fixture",
+    "fixture_label": "compliant",
+    "format_version": "1.2",
+    "sha256": "58509c26c50f2d0f217b438b158c14b3fd7151f9677645341841bc5002defab0",
+    "terraform_version": "synthetic"
+  },
+  "ruleset": {
+    "files_sha256": "c1618db438e59d81d2a14c105e5b83b460ce74aa24f8b6bd0559c9a49c20b663",
+    "id": "aws-private-audit-baseline",
+    "version": "0.1.0"
+  },
+  "summary": {
+    "exit_code": 0,
+    "fail": 0,
+    "pass": 47,
+    "result": "pass",
+    "unknown": 0
+  },
+  "tool": {
+    "name": "aws-baseline-evidence",
+    "version": "0.1.0"
+  },
+  "unsupported_resources": []
+}

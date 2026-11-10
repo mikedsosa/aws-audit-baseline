@@ -1,0 +1,64 @@
+aws-baseline-evidence 0.1.0
+ruleset aws-private-audit-baseline 0.1.0
+evidence_schema 1.0.0
+evidence_class synthetic_fixture
+fixture_label noncompliant
+deployed_aws_verified false
+input_sha256 526aab85d32b2ee9edf9c9f410c0462449f5e453fc7177ad7efe7ac66639b578
+input_bytes 26662
+ruleset_files_sha256 c1618db438e59d81d2a14c105e5b83b460ce74aa24f8b6bd0559c9a49c20b663
+evidence_content_sha256 a5ed7cb7bf16fdfdf73c28c7058ee5b62214481eb1dff53f271310a1a48771db
+This output is not a compliance certification and does not claim complete coverage.
+This file is not evidence of a deployed AWS account.
+Missing and unknown attributes are not counted as passes.
+
+[pass] BASE-COMP-001 aws_cloudtrail.audit_logs,aws_iam_role.auditor,aws_iam_role.workload_operator,aws_kms_key.audit_logs,aws_kms_key.workload_data,aws_s3_bucket.audit_logs,aws_s3_bucket.workload_data the planned end state has one tagged workload bucket, audit bucket, workload key, audit key, workload role, auditor role, and trail
+[pass] BASE-SCOPE-001 - known ARNs agree on account 123456789012, region us-east-1, and partition aws
+[fail] CT-DATA-001 aws_cloudtrail.audit_logs data_resource is not empty
+[fail] CT-DEST-001 aws_cloudtrail.audit_logs,aws_s3_bucket.audit_logs trail bucket is not the audit bucket trail KMS key is not the audit alias
+[fail] CT-FLAG-001 aws_cloudtrail.audit_logs enable_log_file_validation is False is_multi_region_trail is False is_organization_trail is True
+[pass] CT-S3POL-001 aws_cloudtrail.audit_logs,aws_s3_bucket.audit_logs,aws_s3_bucket_policy.audit_logs CloudTrail can get the bucket ACL and put logs only for this trail ARN
+[fail] DISCLAIM-001 output.deployment_status deployment_status is absent or is not the draft disclaimer
+[pass] IAM-PERM-001 aws_iam_role.auditor,aws_iam_role_policy.auditor auditor policy is read-only for the audit bucket and trail
+[fail] IAM-PERM-001 aws_iam_role.workload_operator,aws_iam_role_policy.workload_operator workload policy statement IDs are not the assessed set
+[pass] IAM-SESSION-001 aws_iam_role.auditor max_session_duration is 3600 seconds
+[pass] IAM-SESSION-001 aws_iam_role.workload_operator max_session_duration is 3600 seconds
+[pass] IAM-TRUST-001 aws_iam_role.auditor trust policy allows only IAM users in this account and requires MFA
+[fail] IAM-TRUST-001 aws_iam_role.workload_operator trust policy is not limited to IAM users in this account with MFA
+[pass] KMS-ALIAS-001 aws_kms_alias.audit_logs,aws_kms_key.audit_logs one alias targets this component key
+[pass] KMS-ALIAS-001 aws_kms_alias.workload_data,aws_kms_key.workload_data one alias targets this component key
+[pass] KMS-POL-001 aws_kms_key.audit_logs key policy matches the baseline statements for this component
+[pass] KMS-POL-001 aws_kms_key.workload_data key policy matches the baseline statements for this component
+[fail] KMS-ROT-001 aws_kms_key.audit_logs enable_key_rotation is False
+[pass] KMS-ROT-001 aws_kms_key.workload_data key rotation is enabled with a 365 day period
+[unknown] KMS-SEP-001 aws_s3_bucket.audit_logs,aws_s3_bucket.workload_data one or both KMS key ids are unknown
+[pass] KMS-SPEC-001 aws_kms_key.audit_logs key is an enabled single-Region symmetric encryption key
+[fail] KMS-SPEC-001 aws_kms_key.workload_data multi_region is True
+[fail] KMS-WIN-001 aws_kms_key.audit_logs deletion_window_in_days is 7
+[pass] KMS-WIN-001 aws_kms_key.workload_data deletion window is 30 days
+[pass] PROV-001 - the plan configuration has no provisioners
+[pass] S3-AUDIT-DEL-001 aws_s3_bucket.audit_logs,aws_s3_bucket_policy.audit_logs audit object and version deletes are denied for every principal, with no break-glass condition
+[pass] S3-BPA-001 aws_s3_bucket.audit_logs,aws_s3_bucket_public_access_block.audit_logs all four public access block settings are explicitly true
+[fail] S3-BPA-001 aws_s3_bucket.workload_data,aws_s3_bucket_public_access_block.workload_data block_public_acls is False
+[fail] S3-DESTROY-001 aws_s3_bucket.audit_logs force_destroy is True
+[pass] S3-DESTROY-001 aws_s3_bucket.workload_data force_destroy is explicitly false
+[pass] S3-ENC-001 aws_s3_bucket.audit_logs,aws_s3_bucket_server_side_encryption_configuration.audit_logs default encryption is SSE-KMS with a bucket key and this component's alias
+[fail] S3-ENC-001 aws_s3_bucket.workload_data,aws_s3_bucket_server_side_encryption_configuration.workload_data sse_algorithm is 'AES256' bucket_key_enabled is False kms_master_key_id is not a known string
+[pass] S3-LIFE-001 aws_s3_bucket.audit_logs,aws_s3_bucket_lifecycle_configuration.audit_logs lifecycle matches the baseline retention and abort limits
+[pass] S3-LIFE-001 aws_s3_bucket.workload_data,aws_s3_bucket_lifecycle_configuration.workload_data lifecycle matches the baseline retention and abort limits
+[pass] S3-LOCK-001 aws_s3_bucket.audit_logs Object Lock is explicitly off; this pass is not an immutability control
+[fail] S3-LOCK-001 aws_s3_bucket.workload_data object_lock_enabled is True
+[pass] S3-OWN-001 aws_s3_bucket.audit_logs,aws_s3_bucket_ownership_controls.audit_logs object ownership is BucketOwnerEnforced
+[fail] S3-OWN-001 aws_s3_bucket.workload_data,aws_s3_bucket_ownership_controls.workload_data object_ownership is 'ObjectWriter'
+[pass] S3-POLICY-001 aws_s3_bucket.audit_logs,aws_s3_bucket_policy.audit_logs bucket policy statement IDs match the assessed set
+[fail] S3-POLICY-001 aws_s3_bucket.workload_data,aws_s3_bucket_policy.workload_data bucket policy statement IDs are not the assessed set
+[pass] S3-SSE-001 aws_s3_bucket.audit_logs,aws_s3_bucket_policy.audit_logs callers other than CloudTrail are limited to aws:kms, and CloudTrail may send aws:kms or AES256
+[fail] S3-SSE-001 aws_s3_bucket.workload_data,aws_s3_bucket_policy.workload_data PutObject is not limited to an aws:kms encryption header
+[pass] S3-TLS-001 aws_s3_bucket.audit_logs,aws_s3_bucket_policy.audit_logs bucket policy denies s3:* when aws:SecureTransport is false
+[fail] S3-TLS-001 aws_s3_bucket.workload_data,aws_s3_bucket_policy.workload_data bucket policy has no matching deny for insecure transport
+[fail] S3-VER-001 aws_s3_bucket.audit_logs,aws_s3_bucket_versioning.audit_logs status is 'Suspended'
+[pass] S3-VER-001 aws_s3_bucket.workload_data,aws_s3_bucket_versioning.workload_data versioning status is Enabled
+[unknown] UNSUPPORTED-TYPE-001 aws_instance.demo the plan contains resource types or modes this checker does not assess
+
+summary pass=27 fail=18 unknown=2 result=fail
+exit_code 1
