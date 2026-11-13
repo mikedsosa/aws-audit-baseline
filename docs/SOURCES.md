@@ -1,6 +1,6 @@
 # Sources
 
-Draft. The pages below were fetched on 8 November 2026, except the rows that say they were read on 10 November 2026. They are not a substitute for a later fact-check. Claims in the other docs that are not tied to a row here should be treated as design notes, not as quotations.
+Draft. The pages below were fetched on 8 November 2026, except the rows that say they were read on 10 or 13 November 2026. The pages behind `docs/REVIEW-2026-11-13.md` and `docs/CONTROL-MAPPING.md` are listed in those files and in the rows below. They are not a substitute for a later fact-check. Claims in the other docs that are not tied to a row here should be treated as design notes, not as quotations.
 
 | Claim used in this draft | Page |
 | --- | --- |
@@ -23,6 +23,18 @@ Draft. The pages below were fetched on 8 November 2026, except the rows that say
 | Automatic rotation default period is 365 days when unset. Automatic rotation applies to symmetric encryption keys with AWS KMS key material. Rotation does not re-encrypt existing data. | https://docs.aws.amazon.com/kms/latest/developerguide/rotate-keys.html |
 | Deleting a KMS key is irreversible. Symmetric ciphertext cannot be decrypted by a new key after deletion. Waiting period is 7–30 days, default 30, and can run up to 24 hours longer. The key cannot be used while pending deletion. | https://docs.aws.amazon.com/kms/latest/developerguide/deleting-keys.html |
 | S3 Bucket Keys can reduce KMS request costs by up to 99 percent, in AWS's words. Bucket keys use the bucket ARN as encryption context. Not supported for DSSE-KMS. | https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucket-key.html |
+| Lifecycle permanently deletes noncurrent versions; a bucket policy cannot block lifecycle deletion. Read 13 November 2026. | https://docs.aws.amazon.com/AmazonS3/latest/userguide/lifecycle-expire-general-considerations.html |
+| Object Lock modes. COMPLIANCE retention cannot be shortened, even by root. GOVERNANCE can be bypassed with `s3:BypassGovernanceRetention`. Read 13 November 2026. | https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html |
+| Object Lock cannot be disabled once enabled; lifecycle cannot delete locked versions. Read 13 November 2026. | https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock-managing.html |
+| Account-level Block Public Access calls return Access Denied when an organization-level policy manages the account. Read 13 November 2026. | https://docs.aws.amazon.com/AmazonS3/latest/userguide/configuring-block-public-access-account.html |
+| SSE-KMS needs `kms:GenerateDataKey` for upload and `kms:Decrypt` for download and multipart upload; `aws:kms` without a key id uses the AWS managed key; access log targets must use SSE-S3. Read 13 November 2026. | https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingKMSEncryption.html |
+| Trails do not log data events by default; S3 object operations are data events. Read 13 November 2026. | https://docs.aws.amazon.com/awscloudtrail/latest/userguide/logging-data-events-with-cloudtrail.html |
+| Organization trails are created from the management account or a delegated administrator; member accounts cannot modify them. Read 13 November 2026. | https://docs.aws.amazon.com/awscloudtrail/latest/userguide/creating-trail-organization.html |
+| Default key policy and the risk of an unmanageable key. Read 13 November 2026. | https://docs.aws.amazon.com/kms/latest/developerguide/key-policy-default.html |
+| `kms:ViaService` limits key use to requests from a named AWS service. Read 13 November 2026. | https://docs.aws.amazon.com/kms/latest/developerguide/conditions-kms.html |
+| `LookupEvents`, `DescribeTrails`, `ListTrails` have no resource types. Read 13 November 2026. | https://servicereference.us-east-1.amazonaws.com/v1/cloudtrail/cloudtrail.json |
+| IAM Access Analyzer quotas and pricing. Read 13 November 2026. | https://docs.aws.amazon.com/IAM/latest/UserGuide/access-analyzer-quotas.html , https://aws.amazon.com/iam/access-analyzer/pricing/ |
+| Security Hub CIS v5.0.0 mapping and control pages with NIST SP 800-53 Rev. 5 related requirements. Read 13 November 2026. | https://docs.aws.amazon.com/securityhub/latest/userguide/cis-aws-foundations-benchmark.html |
 | `terraform show -json` plan shape: `format_version`, `resource_changes`, `after`, `after_unknown`, configuration expressions, and output changes. | https://developer.hashicorp.com/terraform/internals/json-format |
 | Provider arguments used for the trail, including defaults for validation, multi-Region, and organization trail. The current registry page also documents `recursive_logging`, which AWS provider 5.100.0 rejected at `terraform validate`. | https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/cloudtrail |
 | Key arguments used here, including `rotation_period_in_days` 90–2560 and `deletion_window_in_days` 7–30. The provider example delegates `kms:*` to the account root. | https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/kms_key |

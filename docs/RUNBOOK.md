@@ -38,7 +38,7 @@ From the CloudTrail pricing page:
 
 - One copy of management events delivered to S3 is described as free, with limits.
 - Additional copies of management events: $2.00 per 100,000 events.
-- Data events: $0.10 per 100,000 events delivered. This stack does not enable them.
+- Data events: $0.10 per 100,000 events delivered (re-read 13 November 2026). This stack enables S3 object data events for the workload bucket only, so every object call on that bucket is billed at this rate. No volume was measured.
 - Network activity events: $0.10 per 100,000. Not enabled.
 - Insights for management events: $0.35 per 100,000 events analyzed per insight type. Not enabled.
 - Delivery to CloudWatch Logs: $0.25 per GB, plus CloudWatch ingestion. Not enabled.
@@ -65,7 +65,9 @@ Not executed. Documented so a reviewer can see them.
 
 - `force_destroy` is false. `terraform destroy` does not empty versioned buckets. The audit bucket policy denies `s3:DeleteObject` and `s3:DeleteObjectVersion` for every principal, so an API delete of log objects requires removing `DenyAuditObjectDelete` first. There is no break-glass principal. S3 Lifecycle expiration still removes audit objects, because lifecycle does not call `DeleteObject`. Workload objects can be deleted by the workload role under `app/`, and version cleanup is still manual or by lifecycle. That deletion is not scripted here.
 - Versioning cannot be switched off after it has been enabled; it can be suspended. Suspension is not in this plan.
-- Audit lifecycle deletes current log objects after `audit_log_retention_days` (default 365) and noncurrent versions after `audit_noncurrent_version_days` (default 30). Workload current objects are not expired. Workload noncurrent versions expire after 30 days by default.
+- Audit lifecycle deletes current log objects after `audit_log_retention_days` (default 365) and noncurrent versions after `audit_noncurrent_version_days` (default 365; the plan fails if it is below the retention window). Workload current objects are not expired. Workload noncurrent versions expire after 30 days by default.
+- If `audit_object_lock_mode` was set, Object Lock cannot be turned off and locked versions cannot be deleted until retention ends. In COMPLIANCE mode no user, including root, can shorten that. Choose the mode before the first apply.
+- `terraform destroy` on `aws_s3_account_public_access_block.account` is expected to remove the account-wide setting for every bucket in the account. Not tested. Remove the resource from state instead if the account setting must stay.
 - Destroying the trail does not delete the log objects. Leaving a broken trail in place can incur the 30 day redelivery charges described above.
 - Scheduling KMS deletion starts a 30 day window in this plan. The delete-key page says the key cannot be used during that window, and that symmetric ciphertext cannot be decrypted after the key is deleted. Cancel during the window if the objects are still needed. The actual deletion time can be up to 24 hours longer than the scheduled period.
 - Deleting the buckets returns their names to the shared global namespace. The S3 security page says another account can then create the same name.
@@ -76,9 +78,9 @@ Not executed. Documented so a reviewer can see them.
 
 | File | Class | Result |
 | --- | --- | --- |
-| `docs/evidence/synthetic-compliant.txt` | synthetic fixture | exit 0, 47 pass, 0 fail, 0 unknown |
-| `docs/evidence/synthetic-noncompliant.txt` | synthetic fixture | exit 1, 27 pass, 18 fail, 2 unknown |
-| `docs/evidence/synthetic-unknown.txt` | synthetic fixture | exit 3, 34 pass, 0 fail, 13 unknown |
-| `docs/evidence/generated-offline-plan.txt` | `terraform show -json` | exit 3, 41 pass, 0 fail, 6 unknown |
+| `docs/evidence/synthetic-compliant.txt` | synthetic fixture | exit 0, 53 pass, 0 fail, 0 unknown |
+| `docs/evidence/synthetic-noncompliant.txt` | synthetic fixture | exit 1, 32 pass, 19 fail, 2 unknown |
+| `docs/evidence/synthetic-unknown.txt` | synthetic fixture | exit 3, 40 pass, 0 fail, 13 unknown |
+| `docs/evidence/generated-offline-plan.txt` | `terraform show -json` | exit 3, 47 pass, 0 fail, 6 unknown |
 
-Those files are checker output. They are not AWS API responses.
+Regenerated 13 November 2026. Those files are checker output. They are not AWS API responses.

@@ -12,7 +12,9 @@ The Terraform in `terraform/` describes one account and one home Region:
 
 - a workload bucket and a separate CloudTrail bucket
 - a customer managed KMS key for each bucket
-- one multi-Region trail for management events, with log file validation on and organization trail off
+- one multi-Region trail for management events and workload bucket object data events, with log file validation on and organization trail off
+- account-level S3 Block Public Access for that account
+- optional S3 Object Lock on the audit bucket (`audit_object_lock_mode`, default `OFF`)
 - two IAM roles that require MFA and trust only IAM users in that account
 
 The workload role is limited to the `app/` prefix. The auditor role can read and list only the `cloudtrail/` prefix. Both bucket policies deny insecure transport. Both also deny `PutObject` when `s3:x-amz-server-side-encryption` is not `aws:kms`. That check is `StringNotEquals`, so a request that omits the header is denied before default encryption applies. Default SSE-KMS does not cover that request. On the audit bucket, the same deny uses `StringNotEqualsIfExists` on `aws:PrincipalServiceName`. An IAM caller has no service name, so an IAM upload that sends `AES256` is denied. Callers other than CloudTrail stay on `aws:kms` only. A separate deny lets CloudTrail send `aws:kms` or `AES256`. The CloudTrail security best-practices page says to allow AES256 alongside `aws:kms` when SSE-KMS and log file validation are used, and it shows that condition. The example assumes CloudTrail sends `aws:kms` or `AES256`. The page was read on 10 November 2026: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/best-practices-security.html. The audit bucket also denies `s3:DeleteObject` and `s3:DeleteObjectVersion` for every principal. There is no break-glass principal. S3 Lifecycle expiration does not call `DeleteObject`, so that deny does not stop the retention rule.
@@ -101,15 +103,42 @@ Other scans after the fixes:
 
 Copies of the checker output are in `docs/evidence/`.
 
+### Review of 13 November 2026
+
+An independent review of `b2085aa` is in [docs/REVIEW-2026-11-13.md](docs/REVIEW-2026-11-13.md), with control mappings in [docs/CONTROL-MAPPING.md](docs/CONTROL-MAPPING.md). It found 3 high, 7 medium, 7 low, and 1 informational item. 7 were fixed in Terraform, the checker, or both. H-3 (Object Lock) was partly fixed as an opt-in. The informational item was closed by reading the AWS service reference. The other 9 are deferred, with reasons. New rules: `S3-ACCT-BPA-001`, `S3-RET-001`, `KMS-SCOPE-001`, `IAM-TAMPER-001`.
+
+Results after those changes, same tool versions, run locally on 13 November 2026:
+
+| Command | Result |
+| --- | --- |
+| `PYTHONPATH=src .venv/bin/pytest` | 76 passed |
+| `PYTHONPATH=src .venv/bin/pytest --collect-only -q` | 76 tests collected |
+| `.venv/bin/ruff check src tests` | All checks passed |
+| `.venv/bin/ruff format --check src tests` | 18 files already formatted |
+| `terraform -chdir=terraform fmt -check -recursive` | exit 0 |
+| `terraform -chdir=terraform validate` | Success. The configuration is valid. |
+| `./scripts/offline-plan.sh` | 24 resources to create, 0 to change, 0 to destroy |
+
+| File | Pass | Fail | Unknown | Exit |
+| --- | --- | --- | --- | --- |
+| `tests/fixtures/synthetic-compliant.json` | 53 | 0 | 0 | 0 |
+| `tests/fixtures/synthetic-object-lock.json` | 53 | 0 | 0 | 0 |
+| `tests/fixtures/synthetic-noncompliant.json` | 32 | 19 | 2 | 1 |
+| `tests/fixtures/synthetic-unknown.json` | 40 | 0 | 13 | 3 |
+| `tests/fixtures/generated/offline.plan.json` | 47 | 0 | 6 | 3 |
+| the `b2085aa` generated plan, scored by the new rules | 40 | 7 | 6 | 1 |
+
+The six unknowns are the same KMS identifiers as before. Nothing was applied.
+
 ## Limitations
 
 - No AWS account was contacted. Validate and plan do not show that CloudTrail can deliver to the bucket or that the KMS policies work.
 - The six unknown findings on a real plan are key ids AWS assigns at apply time. The synthetic compliant file fills those ids with placeholders. A pass on that file is not a pass on the generated plan, and neither file means a bucket exists.
-- The audit bucket denies `s3:DeleteObject` and `s3:DeleteObjectVersion` for every principal. There is no break-glass principal, so an API delete requires a policy change. S3 Lifecycle expiration still removes objects because it does not call `DeleteObject`. That is documented at https://docs.aws.amazon.com/AmazonS3/latest/userguide/troubleshoot-lifecycle.html, read on 10 November 2026. Object Lock and MFA Delete are off.
+- The audit bucket denies `s3:DeleteObject` and `s3:DeleteObjectVersion` for every principal. There is no break-glass principal, so an API delete requires a policy change. S3 Lifecycle expiration still removes objects because it does not call `DeleteObject`. That is documented at https://docs.aws.amazon.com/AmazonS3/latest/userguide/troubleshoot-lifecycle.html, read on 10 November 2026. Object Lock is opt-in and off in the example. MFA Delete is off because it cannot be used with lifecycle. Noncurrent audit versions are kept at least as long as current ones (default 365 days).
 - The CloudTrail `kms:Decrypt` statement has no `aws:SourceArn` condition. That matches the statement in the CloudTrail KMS key policy documentation used for this draft. The checker now rejects an extra `AWS: "*"` principal on that statement.
 - Both key policies still allow this account's root `kms:*`. Other IAM in the account is invisible to the checker.
-- `LookupEvents`, `DescribeTrails`, and `ListTrails` are allowed on `Resource "*"`.
-- Bucket Block Public Access is set on these two buckets only. Account and organization settings are not set.
+- `LookupEvents`, `DescribeTrails`, and `ListTrails` are allowed on `Resource "*"`. AWS's CloudTrail service reference lists no resource types for them.
+- Bucket and account Block Public Access are planned. The account setting affects every bucket in the account and is rejected where an organization-level S3 policy manages it. Organization settings are not set.
 - `S3-SSE-001` keeps callers other than CloudTrail on `aws:kms`. CloudTrail may send `aws:kms` or `AES256`. The CloudTrail security best-practices page says to allow AES256 alongside `aws:kms` when SSE-KMS and log file validation are used, and it shows that condition. A request that omits `x-amz-server-side-encryption` is denied by these `StringNotEquals` statements before default encryption applies. An IAM caller who sends `AES256` to the audit bucket is denied, because `aws:PrincipalServiceName` is absent and that deny uses `StringNotEqualsIfExists`.
-- Data events, Insights, CloudTrail Lake, CloudWatch Logs, EventBridge, and S3 server access logs are not in the stack. GuardDuty, AWS Config, and Security Hub are not in it either. Each of those three can be enabled per account or organization-wide with a delegated administrator. AWS pricing says the included capabilities are consolidated under Security Hub rather than billed twice; remaining GuardDuty capabilities stay on GuardDuty's bill. See https://aws.amazon.com/security-hub/pricing/ . tfsec flagged the missing CloudWatch destination and the missing S3 access logs. Those were left out on purpose.
+- Data events for anything other than workload bucket objects, Insights, CloudTrail Lake, CloudWatch Logs, EventBridge, and S3 server access logs are not in the stack. GuardDuty, AWS Config, and Security Hub are not in it either. Each of those three can be enabled per account or organization-wide with a delegated administrator. AWS pricing says the included capabilities are consolidated under Security Hub rather than billed twice; remaining GuardDuty capabilities stay on GuardDuty's bill. See https://aws.amazon.com/security-hub/pricing/ . tfsec flagged the missing CloudWatch destination and the missing S3 access logs. Those were left out on purpose.
 - Docs that explain the AWS behavior are still a draft. The pages listed in `docs/SOURCES.md` were fetched on 8 November 2026, except the rows that say they were read on 10 November 2026. Those rows are the CloudTrail security best-practices page, the S3 lifecycle troubleshooting page, the IAM condition-operator page, the IAM global condition-keys page, the S3 SSE-S3 page, and the Security Hub pricing page.

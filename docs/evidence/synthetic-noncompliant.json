@@ -12,6 +12,8 @@
       "IAM-PERM-001",
       "IAM-SESSION-001",
       "IAM-SESSION-001",
+      "IAM-TAMPER-001",
+      "IAM-TAMPER-001",
       "IAM-TRUST-001",
       "IAM-TRUST-001",
       "KMS-ALIAS-001",
@@ -20,12 +22,15 @@
       "KMS-POL-001",
       "KMS-ROT-001",
       "KMS-ROT-001",
+      "KMS-SCOPE-001",
+      "KMS-SCOPE-001",
       "KMS-SEP-001",
       "KMS-SPEC-001",
       "KMS-SPEC-001",
       "KMS-WIN-001",
       "KMS-WIN-001",
       "PROV-001",
+      "S3-ACCT-BPA-001",
       "S3-AUDIT-DEL-001",
       "S3-BPA-001",
       "S3-BPA-001",
@@ -41,6 +46,7 @@
       "S3-OWN-001",
       "S3-POLICY-001",
       "S3-POLICY-001",
+      "S3-RET-001",
       "S3-SSE-001",
       "S3-SSE-001",
       "S3-TLS-001",
@@ -52,24 +58,28 @@
     "certification": "none. This output is not a compliance certification and does not claim complete coverage.",
     "not_assessed": [
       {
-        "detail": "Bucket public access blocks do not set or prove account or organization S3 Block Public Access.",
-        "id": "account-and-organization-public-access-block"
+        "detail": "The plan can set account-level Block Public Access. It does not set or prove an AWS Organizations S3 policy.",
+        "id": "organization-public-access-block"
+      },
+      {
+        "detail": "The trail is a single-account trail. An organization trail must be created from the management account or a delegated administrator and is not modeled here.",
+        "id": "organization-trail-scope"
       },
       {
         "detail": "This plan is not an AWS Organizations policy and does not show SCPs, RCPs, or permission boundaries.",
         "id": "organization-scps-rcps-permission-boundaries"
       },
       {
-        "detail": "Object Lock and MFA Delete are not enabled. Versioning alone does not make logs immutable.",
-        "id": "s3-object-lock-and-mfa-delete"
+        "detail": "Object Lock on the audit bucket is opt-in and off in the example plan. MFA Delete is not enabled; the CloudTrail best-practices page says it cannot be used with lifecycle configurations.",
+        "id": "s3-object-lock-default-off-and-mfa-delete"
       },
       {
         "detail": "S3 server access logging is not configured. CloudTrail management events are not object access logs.",
         "id": "s3-server-access-logging"
       },
       {
-        "detail": "S3 object-level data events are not enabled. Management events do not record GetObject or PutObject data events.",
-        "id": "cloudtrail-data-events"
+        "detail": "Data events are selected for workload bucket objects only. Other buckets, Lambda, DynamoDB, and other data event types are not logged.",
+        "id": "cloudtrail-data-events-other-resources"
       },
       {
         "detail": "CloudTrail Insights, Lake, CloudWatch Logs delivery, and EventBridge are not part of this stack.",
@@ -84,7 +94,7 @@
         "id": "cloudtrail-recursive-logging"
       },
       {
-        "detail": "GuardDuty, Security Hub, AWS Config, IAM Access Analyzer, and Macie are not deployed or queried.",
+        "detail": "GuardDuty, Security Hub, AWS Config, IAM Access Analyzer, and Macie are not deployed or queried. An account allows one account-level analyzer per type per Region, so this stack does not create one.",
         "id": "guardduty-securityhub-config-analyzer-macie"
       },
       {
@@ -100,6 +110,10 @@
         "id": "other-iam-in-the-account"
       },
       {
+        "detail": "The audit bucket policy does not deny PutObject from IAM callers that send aws:kms. An overwrite keeps the old version as noncurrent for the retention period but is not blocked.",
+        "id": "audit-bucket-overwrite-by-iam"
+      },
+      {
         "detail": "The CloudTrail kms:Decrypt statement follows the published example and is not restricted by aws:SourceArn.",
         "id": "cloudtrail-kms-decrypt-source-arn"
       },
@@ -113,7 +127,7 @@
       }
     ]
   },
-  "evidence_content_sha256": "a5ed7cb7bf16fdfdf73c28c7058ee5b62214481eb1dff53f271310a1a48771db",
+  "evidence_content_sha256": "f72ac2723975559f18dc16f5b55ce9f87dbac4c5375c96ef7a33bc5364dbcb29",
   "evidence_content_sha256_scope": "sha256 of canonical JSON with sorted keys and compact separators, excluding the evidence_content_sha256 field",
   "evidence_schema_version": "1.0.0",
   "findings": [
@@ -138,7 +152,7 @@
       "status": "pass"
     },
     {
-      "reason": "data_resource is not empty",
+      "reason": "data_resource values are not exactly the workload bucket object prefix",
       "resource_addresses": [
         "aws_cloudtrail.audit_logs"
       ],
@@ -215,6 +229,24 @@
       "status": "pass"
     },
     {
+      "reason": "inline policies allow no trail, bucket policy, lifecycle, lock, or key administration action; other IAM in the account is not visible",
+      "resource_addresses": [
+        "aws_iam_role.auditor",
+        "aws_iam_role_policy.auditor"
+      ],
+      "rule_id": "IAM-TAMPER-001",
+      "status": "pass"
+    },
+    {
+      "reason": "inline policy allows tamper actions: cloudtrail:DeleteTrail, cloudtrail:PutEventSelectors, cloudtrail:PutInsightSelectors, cloudtrail:StopLogging",
+      "resource_addresses": [
+        "aws_iam_role.workload_operator",
+        "aws_iam_role_policy.workload_operator"
+      ],
+      "rule_id": "IAM-TAMPER-001",
+      "status": "fail"
+    },
+    {
       "reason": "trust policy allows only IAM users in this account and requires MFA",
       "resource_addresses": [
         "aws_iam_role.auditor"
@@ -281,6 +313,22 @@
       "status": "pass"
     },
     {
+      "reason": "non-root key grants are key-use only and conditioned, except the documented CloudTrail decrypt statement; account-root kms:* still delegates to IAM",
+      "resource_addresses": [
+        "aws_kms_key.audit_logs"
+      ],
+      "rule_id": "KMS-SCOPE-001",
+      "status": "pass"
+    },
+    {
+      "reason": "non-root key grants are key-use only and conditioned, except the documented CloudTrail decrypt statement; account-root kms:* still delegates to IAM",
+      "resource_addresses": [
+        "aws_kms_key.workload_data"
+      ],
+      "rule_id": "KMS-SCOPE-001",
+      "status": "pass"
+    },
+    {
       "reason": "one or both KMS key ids are unknown",
       "resource_addresses": [
         "aws_s3_bucket.audit_logs",
@@ -325,6 +373,14 @@
       "reason": "the plan configuration has no provisioners",
       "resource_addresses": [],
       "rule_id": "PROV-001",
+      "status": "pass"
+    },
+    {
+      "reason": "account-level Block Public Access is planned with all four settings true; an organization policy is not assessed",
+      "resource_addresses": [
+        "aws_s3_account_public_access_block.account"
+      ],
+      "rule_id": "S3-ACCT-BPA-001",
       "status": "pass"
     },
     {
@@ -459,6 +515,15 @@
       "status": "fail"
     },
     {
+      "reason": "no enabled audit lifecycle rule removes a log version before 365 days; lifecycle is not WORM and can be edited",
+      "resource_addresses": [
+        "aws_s3_bucket.audit_logs",
+        "aws_s3_bucket_lifecycle_configuration.audit_logs"
+      ],
+      "rule_id": "S3-RET-001",
+      "status": "pass"
+    },
+    {
       "reason": "callers other than CloudTrail are limited to aws:kms, and CloudTrail may send aws:kms or AES256",
       "resource_addresses": [
         "aws_s3_bucket.audit_logs",
@@ -522,23 +587,23 @@
     }
   ],
   "input": {
-    "byte_length": 26662,
+    "byte_length": 27411,
     "deployed_aws_verified": false,
     "evidence_class": "synthetic_fixture",
     "fixture_label": "noncompliant",
     "format_version": "1.2",
-    "sha256": "526aab85d32b2ee9edf9c9f410c0462449f5e453fc7177ad7efe7ac66639b578",
+    "sha256": "3c894c675c18d613a85554b5ef85c847f438671d94943bf7c3b49c6acfe76876",
     "terraform_version": "synthetic"
   },
   "ruleset": {
-    "files_sha256": "c1618db438e59d81d2a14c105e5b83b460ce74aa24f8b6bd0559c9a49c20b663",
+    "files_sha256": "69187ad23c9f810b6b3febd1d1684941b3e6ece2f87ccd1c515ee11b8e2b4b47",
     "id": "aws-private-audit-baseline",
     "version": "0.1.0"
   },
   "summary": {
     "exit_code": 1,
-    "fail": 18,
-    "pass": 27,
+    "fail": 19,
+    "pass": 32,
     "result": "fail",
     "unknown": 2
   },

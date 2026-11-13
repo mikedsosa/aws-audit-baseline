@@ -14,7 +14,7 @@ flowchart TD
   logs[Audit objects]
   data[app prefix objects]
 
-  internet -->|no public grant and bucket BPA| buckets
+  internet -->|no public grant, bucket and account BPA| buckets
   httpClient -->|Deny when SecureTransport is false| buckets
   workloadRole -->|Get Put Delete under app/| data
   workloadRole -.->|no identity-policy grant| logs
@@ -36,17 +36,18 @@ flowchart TD
 ## What still breaks the boundary
 
 - Any principal outside these two roles. The key policies allow this account's root `kms:*`, which is the delegation pattern in the Terraform AWS provider's key example. Any other IAM policy in the account that grants `kms:*` can use the keys. This checker cannot see those policies.
-- Bucket-level Block Public Access can be changed by a principal who can change the bucket policy. The Block Public Access page says account-level `BlockPublicPolicy` is the stronger control because a bucket policy can otherwise be edited to turn the bucket setting off. This stack does not set the account control.
-- The audit bucket policy denies `s3:DeleteObject` and `s3:DeleteObjectVersion` for every principal. A principal who can change that policy can remove the deny. S3 Lifecycle expiration still removes objects, because lifecycle does not call `DeleteObject`. Object Lock is explicitly off, so these logs are not WORM. The S3 security page says Object Lock can help protect CloudTrail logs. This draft does not enable it, because compliance retention can outlive a study teardown and was not apply-tested. The workload role can still delete current objects under `app/`.
-- Lifecycle expiration deletes current audit objects after the retention window (default 365 days) and noncurrent versions sooner. That is deliberate destruction of log objects, not immutability.
+- Bucket-level Block Public Access can be changed by a principal who can change the bucket policy. The Block Public Access page says account-level `BlockPublicPolicy` is the stronger control because a bucket policy can otherwise be edited to turn the bucket setting off. Since 13 November 2026 this stack plans the account control too. It does not set an organization-level policy.
+- The audit bucket policy denies `s3:DeleteObject` and `s3:DeleteObjectVersion` for every principal. A principal who can change that policy can remove the deny. S3 Lifecycle expiration still removes objects, because lifecycle does not call `DeleteObject`. Object Lock is off in the example, so those logs are not WORM by default. Setting `audit_object_lock_mode` to `GOVERNANCE` or `COMPLIANCE` adds a default retention equal to `audit_log_retention_days`. The default stays off because Object Lock cannot be disabled once on, compliance retention cannot be shortened, and neither mode was apply-tested. The workload role can still delete current objects under `app/`.
+- Lifecycle expiration deletes current audit objects after the retention window (default 365 days) and noncurrent versions after `audit_noncurrent_version_days` (default 365, never less than the retention window). That is deliberate destruction of log objects after retention, not immutability.
+- An IAM caller who can write to the audit bucket can overwrite a log key with `aws:kms`. The original is kept as a noncurrent version for the noncurrent window.
 - Log file validation can show that a delivered file changed or that a digest chain broke. The validation page says you still have to run validation. This CLI does not. It also says disabling validation breaks the digest chain for the gap. The plan leaves validation on.
 - KMS deletion is irreversible for symmetric ciphertext once the waiting period ends. During the wait, the delete-key page says the key cannot be used for cryptographic operations. A scheduled deletion therefore makes existing objects unreadable before the key is gone. The price page says a key pending deletion is not charged, and canceling deletion resumes charges as though it was never scheduled.
 - CloudTrail retries a misconfigured trail for 30 days and those attempted deliveries are billed. The bucket-policy page says to delete the trail to stop that.
 - Deleting a bucket in the shared global namespace lets another account reuse the name. The S3 security page warns about that and recommends not deleting the bucket, or using the account regional namespace. This draft uses the shared namespace.
-- The workload role can delete current objects under `app/`. Versioning keeps a noncurrent version until the 30 day noncurrent lifecycle. That is not a backup.
+- The workload role can delete current objects under `app/`. Versioning keeps a noncurrent version until the noncurrent lifecycle (default 30 days on the workload bucket). That is not a backup.
 - MFA on `AssumeRole` checks the call into these roles. It does not prove how the trusted user authenticated earlier. The trust policy does not allow role principals, because role-chain MFA was not validated.
 - A later plan can remove these resources. The checker only sees the file it is given. It does not enforce anything at apply time, and this draft has no apply.
 
 ## Out of scope on purpose
 
-Network paths, organization guardrails, detective services, object-level data events, server access logs, and digest validation jobs. They are listed in the checker output under `coverage.not_assessed` so a pass cannot be read as complete coverage.
+Network paths, organization guardrails, detective services, data events for anything other than workload bucket objects, server access logs, and digest validation jobs. They are listed in the checker output under `coverage.not_assessed` so a pass cannot be read as complete coverage.
