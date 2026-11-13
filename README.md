@@ -1,6 +1,6 @@
-# Private AWS audit baseline
+# AWS audit baseline
 
-This is a draft released under the MIT License; see [LICENSE](LICENSE). Nothing in it was deployed, and the commands below did not use AWS credentials or create cloud resources.
+Released under the MIT License; see [LICENSE](LICENSE). Nothing in it was deployed, and the commands below did not use AWS credentials or create cloud resources.
 
 ## Problem
 
