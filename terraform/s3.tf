@@ -81,9 +81,12 @@ resource "aws_s3_bucket_policy" "workload_data" {
 }
 
 resource "aws_s3_bucket" "audit_logs" {
-  bucket              = local.logs_bucket_name
-  force_destroy       = false
-  object_lock_enabled = false
+  bucket        = local.logs_bucket_name
+  force_destroy = false
+  # Off by default. Set audit_object_lock_mode to GOVERNANCE or COMPLIANCE to
+  # create the bucket with Object Lock. S3 does not let Object Lock be turned
+  # off again once it is on. See docs/REVIEW-2026-11-13.md.
+  object_lock_enabled = local.audit_object_lock_on
 
   tags = merge(local.common_tags, {
     BaselineComponent = "audit-logs"
@@ -153,6 +156,30 @@ resource "aws_s3_bucket_lifecycle_configuration" "audit_logs" {
 
     noncurrent_version_expiration {
       noncurrent_days = var.audit_noncurrent_version_days
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.audit_logs]
+
+  lifecycle {
+    # An overwritten or delete-marked log version becomes noncurrent. Keeping
+    # noncurrent versions at least as long as the stated retention stops an
+    # overwrite from removing the original before audit_log_retention_days.
+    precondition {
+      condition     = var.audit_noncurrent_version_days >= var.audit_log_retention_days
+      error_message = "audit_noncurrent_version_days must be at least audit_log_retention_days."
+    }
+  }
+}
+
+resource "aws_s3_bucket_object_lock_configuration" "audit_logs" {
+  count  = local.audit_object_lock_on ? 1 : 0
+  bucket = aws_s3_bucket.audit_logs.bucket
+
+  rule {
+    default_retention {
+      mode = var.audit_object_lock_mode
+      days = var.audit_log_retention_days
     }
   }
 

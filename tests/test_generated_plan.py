@@ -28,7 +28,37 @@ def test_generated_offline_plan_is_not_a_deployment() -> None:
     assert "S3-BPA-001" in passed
     assert "CT-FLAG-001" in passed
     assert "CT-DATA-001" in passed
+    for rule_id in ("S3-ACCT-BPA-001", "S3-RET-001", "KMS-SCOPE-001", "IAM-TAMPER-001"):
+        assert rule_id in passed
+    assert summary["pass"] == 47
     assert "not a compliance certification" in document["coverage"]["certification"]
     parsed = json.loads(text)
     assert parsed["applyable"] is True
     assert parsed["errored"] is False
+
+
+def test_generated_plan_has_review_gap_fixes() -> None:
+    parsed = json.loads(PLAN.read_text(encoding="utf-8"))
+    after = {item["address"]: item["change"]["after"] for item in parsed["resource_changes"]}
+    block = after["aws_s3_account_public_access_block.account"]
+    assert block["account_id"] == "123456789012"
+    assert all(
+        block[name] is True
+        for name in (
+            "block_public_acls",
+            "block_public_policy",
+            "ignore_public_acls",
+            "restrict_public_buckets",
+        )
+    )
+    selector = after["aws_cloudtrail.audit_logs"]["event_selector"][0]
+    assert selector["data_resource"] == [
+        {"type": "AWS::S3::Object", "values": ["arn:aws:s3:::studybase-123456789012-data/"]}
+    ]
+    rules = after["aws_s3_bucket_lifecycle_configuration.audit_logs"]["rule"]
+    noncurrent = [
+        item["noncurrent_days"] for rule in rules for item in rule["noncurrent_version_expiration"]
+    ]
+    assert noncurrent == [365]
+    assert after["aws_s3_bucket.audit_logs"]["object_lock_enabled"] is False
+    assert not any(key.startswith("aws_s3_bucket_object_lock_configuration") for key in after)

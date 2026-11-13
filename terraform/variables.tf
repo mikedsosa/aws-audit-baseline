@@ -88,12 +88,23 @@ variable "audit_log_retention_days" {
 
 variable "audit_noncurrent_version_days" {
   type        = number
-  description = "Days before noncurrent versions in the audit bucket expire."
-  default     = 30
+  description = "Days before noncurrent versions in the audit bucket expire. Must be at least audit_log_retention_days, so an overwrite cannot remove a log version before the stated retention."
+  default     = 365
 
   validation {
-    condition     = var.audit_noncurrent_version_days >= 7 && var.audit_noncurrent_version_days <= 90
-    error_message = "audit_noncurrent_version_days must be from 7 through 90."
+    condition     = var.audit_noncurrent_version_days >= 365 && var.audit_noncurrent_version_days <= 3650
+    error_message = "audit_noncurrent_version_days must be from 365 through 3650."
+  }
+}
+
+variable "audit_object_lock_mode" {
+  type        = string
+  description = "OFF, GOVERNANCE, or COMPLIANCE. Anything other than OFF creates the audit bucket with Object Lock and a default retention of audit_log_retention_days. Object Lock cannot be turned off after it is on, and COMPLIANCE retention cannot be shortened or removed by any user, including root."
+  default     = "OFF"
+
+  validation {
+    condition     = contains(["OFF", "GOVERNANCE", "COMPLIANCE"], var.audit_object_lock_mode)
+    error_message = "audit_object_lock_mode must be OFF, GOVERNANCE, or COMPLIANCE."
   }
 }
 

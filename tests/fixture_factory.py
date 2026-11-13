@@ -41,6 +41,7 @@ def compliant_document() -> dict[str, Any]:
     resources = [
         _bucket("workload_data", DATA_BUCKET, DATA_BUCKET_ARN, "workload-data"),
         _bucket("audit_logs", LOGS_BUCKET, LOGS_BUCKET_ARN, "audit-logs"),
+        _account_public_access(),
         _public_access("workload_data", DATA_BUCKET),
         _public_access("audit_logs", LOGS_BUCKET),
         _ownership("workload_data", DATA_BUCKET),
@@ -78,7 +79,7 @@ def compliant_document() -> dict[str, Any]:
                     "id": "expire-audit-objects",
                     "status": "Enabled",
                     "expiration": [{"days": 365}],
-                    "noncurrent_version_expiration": [{"noncurrent_days": 30}],
+                    "noncurrent_version_expiration": [{"noncurrent_days": 365}],
                 },
             ],
         ),
@@ -310,6 +311,48 @@ def _bucket(name: str, bucket: str, arn: str, component: str) -> dict[str, Any]:
     )
 
 
+def _account_public_access() -> dict[str, Any]:
+    return _change(
+        "aws_s3_account_public_access_block.account",
+        "aws_s3_account_public_access_block",
+        "account",
+        {
+            "account_id": ACCOUNT,
+            "block_public_acls": True,
+            "block_public_policy": True,
+            "ignore_public_acls": True,
+            "restrict_public_buckets": True,
+        },
+    )
+
+
+def object_lock_document(mode: str = "GOVERNANCE", days: int = 365) -> dict[str, Any]:
+    """Compliant document with the opt-in audit Object Lock turned on."""
+    document = compliant_document()
+    document["_aws_baseline_fixture"]["label"] = "object-lock"
+    _after(document, "aws_s3_bucket.audit_logs")["object_lock_enabled"] = True
+    lock = _change(
+        "aws_s3_bucket_object_lock_configuration.audit_logs[0]",
+        "aws_s3_bucket_object_lock_configuration",
+        "audit_logs",
+        {
+            "bucket": LOGS_BUCKET,
+            "object_lock_enabled": "Enabled",
+            "rule": [{"default_retention": [{"days": days, "mode": mode, "years": None}]}],
+        },
+    )
+    document["resource_changes"].append(lock)
+    document["configuration"]["root_module"]["resources"].append(
+        {
+            "address": "aws_s3_bucket_object_lock_configuration.audit_logs",
+            "mode": "managed",
+            "type": "aws_s3_bucket_object_lock_configuration",
+            "name": "audit_logs",
+        }
+    )
+    return document
+
+
 def _public_access(name: str, bucket: str) -> dict[str, Any]:
     return _change(
         f"aws_s3_bucket_public_access_block.{name}",
@@ -425,7 +468,9 @@ def _trail() -> dict[str, Any]:
             "enable_logging": True,
             "event_selector": [
                 {
-                    "data_resource": [],
+                    "data_resource": [
+                        {"type": "AWS::S3::Object", "values": [f"{DATA_BUCKET_ARN}/"]}
+                    ],
                     "exclude_management_event_sources": [],
                     "include_management_events": True,
                     "read_write_type": "All",
@@ -596,13 +641,7 @@ def _workload_key_policy() -> dict[str, Any]:
                 "Sid": "AllowWorkloadRoleUse",
                 "Effect": "Allow",
                 "Principal": {"AWS": WORKLOAD_ROLE_ARN},
-                "Action": [
-                    "kms:Decrypt",
-                    "kms:DescribeKey",
-                    "kms:Encrypt",
-                    "kms:GenerateDataKey",
-                    "kms:ReEncrypt*",
-                ],
+                "Action": ["kms:Decrypt", "kms:GenerateDataKey"],
                 "Resource": "*",
                 "Condition": {
                     "StringEquals": {
@@ -656,7 +695,10 @@ def _audit_key_policy() -> dict[str, Any]:
                 "Principal": {"AWS": AUDITOR_ROLE_ARN},
                 "Action": "kms:Decrypt",
                 "Resource": "*",
-                "Condition": {"Null": {"kms:EncryptionContext:aws:cloudtrail:arn": "false"}},
+                "Condition": {
+                    "Null": {"kms:EncryptionContext:aws:cloudtrail:arn": "false"},
+                    "StringEquals": {"kms:ViaService": f"s3.{REGION}.amazonaws.com"},
+                },
             },
         ],
     }

@@ -16,5 +16,6 @@ auditor_trusted_user_arns = [
 ]
 
 audit_log_retention_days        = 365
-audit_noncurrent_version_days   = 30
+audit_noncurrent_version_days   = 365
 workload_noncurrent_version_days = 30
+audit_object_lock_mode           = "OFF"

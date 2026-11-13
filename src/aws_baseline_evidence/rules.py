@@ -6,18 +6,23 @@ is unknown. Neither result is a pass.
 
 from __future__ import annotations
 
+import fnmatch
 import re
 from dataclasses import dataclass, field
 from typing import Any
 
 from aws_baseline_evidence.catalog import (
     ACCOUNT_SCOPED_TRAIL_READS,
+    AUDIT_RETENTION_FLOOR_DAYS,
     AUDITOR_ACTIONS,
     BUCKET_COMPONENTS,
     DEPLOYMENT_STATUS,
     KEY_COMPONENTS,
+    KEY_USE_ACTIONS,
+    OBJECT_LOCK_MODES,
     ROLE_COMPONENTS,
     SUPPORTED_TYPES,
+    TAMPER_ACTIONS,
 )
 from aws_baseline_evidence.lookup import attr, shown
 from aws_baseline_evidence.plan import ParsedPlan, Resource
@@ -52,15 +57,9 @@ _REQUIRED = (
     ("aws_iam_role", "auditor"),
     ("aws_cloudtrail", "audit-logs"),
 )
-_WORKLOAD_KEY_ACTIONS = frozenset(
-    {
-        "kms:Decrypt",
-        "kms:DescribeKey",
-        "kms:Encrypt",
-        "kms:GenerateDataKey",
-        "kms:ReEncrypt*",
-    }
-)
+# The S3 SSE-KMS page lists kms:GenerateDataKey for PutObject and kms:Decrypt
+# for GetObject and multipart upload. Read 2026-11-13.
+_WORKLOAD_KEY_ACTIONS = frozenset({"kms:Decrypt", "kms:GenerateDataKey"})
 _AUDIT_SIDS = frozenset(
     {
         "AWSCloudTrailAclCheck20150319",
@@ -182,6 +181,7 @@ def evaluate(plan: ParsedPlan) -> list[Finding]:
         _disclaimer(plan),
         _provisioners(plan),
         _unsupported(plan),
+        _account_bpa(active, scope),
         *_per_bucket(inventory, active, scope),
         *_per_key(inventory, active, scope),
         _key_separation(inventory, active),
@@ -359,11 +359,12 @@ def _per_bucket(inventory: Inventory, active: list[Resource], scope: Scope) -> l
                 _sse_header(component, bucket, active, scope),
                 _policy_sids(component, bucket, active),
                 _force_destroy(component, bucket),
-                _object_lock(component, bucket),
+                _object_lock(component, bucket, active),
                 _lifecycle(component, bucket, active),
             ]
         )
     findings.append(_audit_delete(inventory, active, scope))
+    findings.append(_retention(inventory.one("aws_s3_bucket", "audit-logs"), active))
     return findings
 
 
@@ -377,6 +378,7 @@ def _per_key(inventory: Inventory, active: list[Resource], scope: Scope) -> list
                 _deletion_window(component, key),
                 _key_spec(component, key),
                 _key_policy(component, key, inventory, scope),
+                _key_scope(component, key, scope),
                 _alias(component, key, active),
             ]
         )
@@ -654,14 +656,81 @@ def _force_destroy(component: str, bucket: Resource | None) -> Finding:
     )
 
 
-def _object_lock(component: str, bucket: Resource | None) -> Finding:
-    return _explicit_bool(
-        "S3-LOCK-001",
+def _object_lock(component: str, bucket: Resource | None, active: list[Resource]) -> Finding:
+    rule_id = "S3-LOCK-001"
+    off = _explicit_bool(
+        rule_id,
         component,
         bucket,
         "object_lock_enabled",
         False,
         "Object Lock is explicitly off; this pass is not an immutability control",
+    )
+    if bucket is None or component != "audit-logs":
+        return off
+    state, enabled = attr(bucket, ("object_lock_enabled",))
+    matched, unresolved = _children(active, bucket, "aws_s3_bucket_object_lock_configuration")
+    if state == "known" and enabled is False:
+        if matched:
+            return finding(
+                rule_id,
+                "fail",
+                (bucket.address, *(item.address for item in matched)),
+                "an Object Lock configuration targets a bucket created with object_lock_enabled false",
+            )
+        return off
+    if state != "known" or enabled is not True:
+        return off
+    if unresolved and not matched:
+        return finding(
+            rule_id, "unknown", (bucket.address,), "Object Lock configuration bucket is unknown"
+        )
+    if len(matched) != 1:
+        return finding(
+            rule_id,
+            "fail",
+            (bucket.address,),
+            "Object Lock is on but the bucket does not have exactly one default retention configuration",
+        )
+    config = matched[0]
+    addresses = (bucket.address, config.address)
+    parts: list[tuple[str, str]] = []
+    rule_state, rules = attr(config, ("rule",))
+    if rule_state == "unknown":
+        return finding(rule_id, "unknown", addresses, "Object Lock rule is unknown")
+    if rule_state != "known" or not isinstance(rules, list) or len(rules) != 1:
+        return finding(rule_id, "fail", addresses, "Object Lock default retention rule is absent")
+    retention = ("rule", 0, "default_retention", 0)
+    mode_state, mode = _flex(config, retention, "mode")
+    days_state, days = _flex(config, retention, "days")
+    years_state, years = _flex(config, retention, "years")
+    if mode_state == "unknown":
+        parts.append(("unknown", "Object Lock mode is unknown"))
+    elif mode not in OBJECT_LOCK_MODES:
+        parts.append(("fail", f"Object Lock mode is {shown(mode)}"))
+    if "unknown" in {days_state, years_state}:
+        parts.append(("unknown", "Object Lock retention period is unknown"))
+    else:
+        total = 0
+        if isinstance(days, int) and not isinstance(days, bool):
+            total = days
+        elif isinstance(years, int) and not isinstance(years, bool):
+            total = years * 365
+        if total < AUDIT_RETENTION_FLOOR_DAYS:
+            parts.append(
+                (
+                    "fail",
+                    f"Object Lock default retention is below {AUDIT_RETENTION_FLOOR_DAYS} days",
+                )
+            )
+    if parts:
+        status, reason = combine(parts)
+        return finding(rule_id, status, addresses, reason)
+    return finding(
+        rule_id,
+        "pass",
+        addresses,
+        f"audit Object Lock default retention is {mode} for at least {AUDIT_RETENTION_FLOOR_DAYS} days; not verified against a live bucket",
     )
 
 
@@ -744,12 +813,12 @@ def _lifecycle(component: str, bucket: Resource | None, active: list[Resource]) 
     if component == "audit-logs":
         if not any(365 <= day <= 3650 for day in expire_days):
             parts.append(("fail", "audit object expiration is not in 365 through 3650 days"))
-        if not any(7 <= day <= 90 for day in noncurrent_days):
-            parts.append(("fail", "audit noncurrent expiration is not in 7 through 90 days"))
+        if not noncurrent_days or not all(365 <= day <= 3650 for day in noncurrent_days):
+            parts.append(("fail", "audit noncurrent expiration is not in 365 through 3650 days"))
     else:
         if expire_days:
             parts.append(("fail", "workload lifecycle expires current objects"))
-        if not any(7 <= day <= 90 for day in noncurrent_days):
+        if not noncurrent_days or not all(7 <= day <= 90 for day in noncurrent_days):
             parts.append(("fail", "workload noncurrent expiration is not in 7 through 90 days"))
     if parts:
         status, reason = combine(parts)
@@ -963,7 +1032,7 @@ def _trail(inventory: Inventory, active: list[Resource], scope: Scope) -> list[F
         _trail_flags(trail),
         _trail_destination(trail, inventory, active, scope),
         _trail_bucket_policy(trail, inventory, active, scope),
-        _trail_data(trail),
+        _trail_data(trail, inventory, scope),
     ]
 
 
@@ -1108,7 +1177,7 @@ def _trail_bucket_policy(
     )
 
 
-def _trail_data(trail: Resource | None) -> Finding:
+def _trail_data(trail: Resource | None, inventory: Inventory, scope: Scope) -> Finding:
     rule_id = "CT-DATA-001"
     if trail is None:
         return _missing(rule_id, "audit-logs", "trail is absent")
@@ -1138,11 +1207,13 @@ def _trail_data(trail: Resource | None) -> Finding:
         else:
             parts.append(("fail", "management event selector is not explicit"))
         if data_state == "absent":
-            parts.append(("unknown", "data_resource is absent and is not assumed empty"))
+            parts.append(
+                ("fail", "data_resource is absent, so workload object access is not logged")
+            )
         elif data_state == "unknown":
             parts.append(("unknown", "data_resource is unknown"))
-        elif data not in ([], None):
-            parts.append(("fail", "data_resource is not empty"))
+        else:
+            parts.append(_data_resources(trail, data, inventory, scope))
         excluded_state, excluded = attr(
             trail, ("event_selector", 0, "exclude_management_event_sources")
         )
@@ -1169,8 +1240,36 @@ def _trail_data(trail: Resource | None) -> Finding:
         rule_id,
         "pass",
         (trail.address,),
-        "management events are explicit and data, advanced, and Insights selectors are empty lists; object access is not logged",
+        "management events are explicit and the only data resource is S3 object events for the workload bucket; the audit bucket is not selected",
     )
+
+
+def _data_resources(
+    trail: Resource, data: object, inventory: Inventory, scope: Scope
+) -> tuple[str, str]:
+    bucket = inventory.one("aws_s3_bucket", "workload-data")
+    audit = inventory.one("aws_s3_bucket", "audit-logs")
+    if bucket is None or audit is None:
+        return "fail", "a baseline bucket is absent, so data events cannot be matched"
+    bucket_state, bucket_arn = _resource_arn(bucket, scope, "s3")
+    audit_state, audit_arn = _resource_arn(audit, scope, "s3")
+    if bucket_state != "known" or audit_state != "known" or not bucket_arn or not audit_arn:
+        return "unknown", "bucket ARNs for the data event selector are unknown"
+    if not isinstance(data, list) or len(data) != 1 or not isinstance(data[0], dict):
+        return "fail", "data_resource is not exactly one S3 object selector"
+    type_state, type_name = attr(trail, ("event_selector", 0, "data_resource", 0, "type"))
+    values_state, values = attr(trail, ("event_selector", 0, "data_resource", 0, "values"))
+    if "unknown" in {type_state, values_state}:
+        return "unknown", "data_resource type or values are unknown"
+    if type_name != "AWS::S3::Object":
+        return "fail", f"data_resource type is {shown(type_name)}"
+    if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
+        return "fail", "data_resource values are not a list of strings"
+    if any(item.startswith(audit_arn) for item in values):
+        return "fail", "the audit bucket is a data event resource, which logs log delivery"
+    if values != [f"{bucket_arn}/"]:
+        return "fail", "data_resource values are not exactly the workload bucket object prefix"
+    return "pass", "workload bucket object events are selected"
 
 
 def _roles(inventory: Inventory, active: list[Resource], scope: Scope) -> list[Finding]:
@@ -1180,6 +1279,7 @@ def _roles(inventory: Inventory, active: list[Resource], scope: Scope) -> list[F
         findings.append(_trust(component, role, scope))
         findings.append(_session(component, role))
         findings.append(_permissions(component, role, inventory, active, scope))
+        findings.append(_tamper(component, role, active))
     return findings
 
 
@@ -1873,12 +1973,18 @@ def _auditor_decrypt(
     principal_state, principals = principals_aws(statement.get("Principal"))
     action_state, actions = actions_of(statement)
     state, values = condition_values(statement, "Null", "kms:EncryptionContext:aws:cloudtrail:arn")
-    if "unknown" in {principal_state, action_state, state}:
+    via_state, via = condition_values(statement, "StringEquals", "kms:ViaService")
+    if "unknown" in {principal_state, action_state, state, via_state}:
         return "unknown", "auditor decrypt grant is partly unknown"
     if statement.get("Effect") != "Allow":
         return "fail", "auditor decrypt grant effect is not Allow"
-    if principals == {role_arn} and actions == {"kms:Decrypt"} and values == {"false"}:
-        return "pass", "auditor can decrypt CloudTrail objects"
+    if (
+        principals == {role_arn}
+        and actions == {"kms:Decrypt"}
+        and values == {"false"}
+        and via == {f"s3.{scope.region}.amazonaws.com"}
+    ):
+        return "pass", "auditor can decrypt CloudTrail objects through S3 only"
     return "fail", "auditor decrypt grant does not match the baseline"
 
 
@@ -2200,3 +2306,241 @@ def _by_sid(
             return {}, ("fail", f"statement id {sid} is duplicated")
         found[sid] = item
     return found, None
+
+
+def _account_bpa(active: list[Resource], scope: Scope) -> Finding:
+    rule_id = "S3-ACCT-BPA-001"
+    blocks = [item for item in active if item.type_name == "aws_s3_account_public_access_block"]
+    if not blocks:
+        return finding(
+            rule_id,
+            "fail",
+            ("missing:aws_s3_account_public_access_block",),
+            "the plan does not set account-level S3 Block Public Access",
+        )
+    addresses = tuple(item.address for item in blocks)
+    if len(blocks) != 1:
+        return finding(
+            rule_id,
+            "fail",
+            addresses,
+            "more than one account-level public access block is planned for the account",
+        )
+    block = blocks[0]
+    parts: list[tuple[str, str]] = []
+    state, account_id = attr(block, ("account_id",))
+    if state == "unknown" or scope.account is None:
+        parts.append(("unknown", "account_id or plan account is unknown"))
+    elif state != "known" or account_id != scope.account:
+        parts.append(("fail", "account_id is not explicitly this plan's account"))
+    for flag in _BPA:
+        flag_state, value = attr(block, (flag,))
+        if flag_state == "known" and value is True:
+            continue
+        if flag_state == "unknown":
+            parts.append(("unknown", f"{flag} is unknown"))
+        elif flag_state == "absent":
+            parts.append(("fail", f"{flag} is absent"))
+        else:
+            parts.append(("fail", f"{flag} is {shown(value)}"))
+    if parts:
+        status, reason = combine(parts)
+        return finding(rule_id, status, addresses, reason)
+    return finding(
+        rule_id,
+        "pass",
+        addresses,
+        "account-level Block Public Access is planned with all four settings true; an organization policy is not assessed",
+    )
+
+
+def _retention(bucket: Resource | None, active: list[Resource]) -> Finding:
+    rule_id = "S3-RET-001"
+    if bucket is None:
+        return _missing(rule_id, "audit-logs", "audit-logs bucket is absent")
+    matched, unresolved = _children(active, bucket, "aws_s3_bucket_lifecycle_configuration")
+    if len(matched) != 1 or unresolved:
+        status = "unknown" if unresolved and len(matched) == 0 else "fail"
+        return finding(
+            rule_id,
+            status,
+            (bucket.address,),
+            "audit lifecycle configuration is missing or not linked",
+        )
+    lifecycle = matched[0]
+    addresses = (bucket.address, lifecycle.address)
+    state, rules = attr(lifecycle, ("rule",))
+    if state == "unknown":
+        return finding(rule_id, "unknown", addresses, "audit lifecycle rules are unknown")
+    if state != "known" or not isinstance(rules, list):
+        return finding(rule_id, "fail", addresses, "audit lifecycle rules are absent")
+    floor = AUDIT_RETENTION_FLOOR_DAYS
+    parts: list[tuple[str, str]] = []
+    current: list[int] = []
+    noncurrent: list[int] = []
+    for index, rule in enumerate(rules):
+        if not isinstance(rule, dict):
+            parts.append(("unknown", "a lifecycle rule is not an object"))
+            continue
+        status_state, status = attr(lifecycle, ("rule", index, "status"))
+        if status_state == "unknown":
+            parts.append(("unknown", "a lifecycle rule status is unknown"))
+            continue
+        if status != "Enabled":
+            continue
+        for block, key, sink, label in (
+            ("expiration", "days", current, "current-version expiration"),
+            (
+                "noncurrent_version_expiration",
+                "noncurrent_days",
+                noncurrent,
+                "noncurrent expiration",
+            ),
+        ):
+            block_state, items = attr(lifecycle, ("rule", index, block))
+            if block_state == "unknown":
+                parts.append(("unknown", f"{label} is unknown"))
+                continue
+            if block_state != "known" or items in (None, []):
+                continue
+            if not isinstance(items, list):
+                parts.append(("unknown", f"{label} is not a list"))
+                continue
+            for item_index in range(len(items)):
+                path = ("rule", index, block, item_index)
+                value_state, value = attr(lifecycle, path + (key,))
+                if value_state == "unknown":
+                    parts.append(("unknown", f"{label} days are unknown"))
+                elif isinstance(value, int) and not isinstance(value, bool):
+                    sink.append(value)
+                    if value < floor:
+                        parts.append(("fail", f"{label} of {value} days is below {floor} days"))
+                if block == "expiration":
+                    date_state, date = attr(lifecycle, path + ("date",))
+                    if date_state == "unknown":
+                        parts.append(("unknown", "expiration date is unknown"))
+                    elif date_state == "known" and date not in (None, ""):
+                        parts.append(
+                            ("fail", "an expiration by date is not checked against retention")
+                        )
+    if current and noncurrent and min(noncurrent) < min(current):
+        parts.append(
+            ("fail", "noncurrent versions are kept for fewer days than current log objects")
+        )
+    noncurrent_unknown = any(
+        status == "unknown" and "noncurrent" in reason for status, reason in parts
+    )
+    if current and not noncurrent and not noncurrent_unknown:
+        parts.append(
+            ("fail", "current log objects expire but noncurrent versions have no stated retention")
+        )
+    if parts:
+        status, reason = combine(parts)
+        return finding(rule_id, status, addresses, reason)
+    return finding(
+        rule_id,
+        "pass",
+        addresses,
+        f"no enabled audit lifecycle rule removes a log version before {floor} days; lifecycle is not WORM and can be edited",
+    )
+
+
+def _key_scope(component: str, key: Resource | None, scope: Scope) -> Finding:
+    rule_id = "KMS-SCOPE-001"
+    if key is None:
+        return _missing(rule_id, component, f"{component} key is absent")
+    state, raw = attr(key, ("policy",))
+    if state == "unknown":
+        return finding(rule_id, "unknown", (key.address,), "key policy is unknown")
+    if state != "known":
+        return finding(rule_id, "fail", (key.address,), "key policy is absent")
+    parsed_state, parsed = parse_policy(raw)
+    statement_state, items = statements(parsed) if parsed else ("unknown", None)
+    if parsed_state != "known" or statement_state != "known" or items is None:
+        return finding(rule_id, "unknown", (key.address,), "key policy is not assessable")
+    if not scope.complete:
+        return finding(rule_id, "unknown", (key.address,), "account scope is unknown")
+    root = f"arn:{scope.partition}:iam::{scope.account}:root"
+    parts: list[tuple[str, str]] = []
+    for statement in items:
+        if statement.get("Effect") != "Allow":
+            continue
+        sid = statement.get("Sid", "?")
+        principal = statement.get("Principal")
+        aws_state, aws = principals_aws(principal)
+        service_state, services = principal_services(principal)
+        action_state, actions = actions_of(statement)
+        if "unknown" in {aws_state, service_state, action_state}:
+            parts.append(("unknown", f"statement {sid} is partly unknown"))
+            continue
+        if aws == {root} and service_state == "absent":
+            continue
+        if "*" in aws or "*" in services or (isinstance(principal, dict) and "*" in principal):
+            parts.append(("fail", f"statement {sid} allows a wildcard principal"))
+            continue
+        extra = sorted(action for action in actions if action not in KEY_USE_ACTIONS)
+        if extra:
+            parts.append(("fail", f"statement {sid} grants {', '.join(extra[:3])}"))
+            continue
+        if not statement.get("Condition"):
+            documented = (
+                services == {"cloudtrail.amazonaws.com"}
+                and aws_state == "absent"
+                and actions == {"kms:Decrypt"}
+            )
+            if not documented:
+                parts.append(("fail", f"statement {sid} has no condition"))
+    if parts:
+        status, reason = combine(parts)
+        return finding(rule_id, status, (key.address,), reason)
+    return finding(
+        rule_id,
+        "pass",
+        (key.address,),
+        "non-root key grants are key-use only and conditioned, except the documented CloudTrail decrypt statement; account-root kms:* still delegates to IAM",
+    )
+
+
+def _tamper(component: str, role: Resource | None, active: list[Resource]) -> Finding:
+    rule_id = "IAM-TAMPER-001"
+    if role is None:
+        return _missing(rule_id, component, f"{component} role is absent")
+    names = _known_strings(role, ("name", "id"))
+    policies: list[Resource] = []
+    for policy in active:
+        if policy.type_name != "aws_iam_role_policy":
+            continue
+        state, role_name = attr(policy, ("role",))
+        if state == "unknown":
+            return finding(rule_id, "unknown", (role.address,), "inline policy role is unknown")
+        if state == "known" and role_name in names:
+            policies.append(policy)
+    addresses = (role.address, *(item.address for item in policies))
+    hits: set[str] = set()
+    for policy in policies:
+        state, raw = attr(policy, ("policy",))
+        parsed_state, parsed = parse_policy(raw) if state == "known" else ("unknown", None)
+        statement_state, items = statements(parsed) if parsed else ("unknown", None)
+        if parsed_state != "known" or statement_state != "known" or items is None:
+            return finding(rule_id, "unknown", addresses, "an inline policy is not assessable")
+        for statement in items:
+            if statement.get("Effect") != "Allow":
+                continue
+            action_state, actions = actions_of(statement)
+            if action_state == "unknown":
+                return finding(rule_id, "unknown", addresses, "inline policy actions are unknown")
+            for pattern in actions:
+                for action in TAMPER_ACTIONS:
+                    if fnmatch.fnmatchcase(action.lower(), pattern.lower()):
+                        hits.add(action)
+    if hits:
+        shown_hits = ", ".join(sorted(hits)[:4])
+        return finding(
+            rule_id, "fail", addresses, f"inline policy allows tamper actions: {shown_hits}"
+        )
+    return finding(
+        rule_id,
+        "pass",
+        addresses,
+        "inline policies allow no trail, bucket policy, lifecycle, lock, or key administration action; other IAM in the account is not visible",
+    )

@@ -12,6 +12,14 @@ resource "aws_cloudtrail" "audit_logs" {
   event_selector {
     read_write_type           = "All"
     include_management_events = true
+
+    # Object-level read and write data events for the workload bucket only.
+    # The audit bucket is not listed, so log delivery is not logged as a data
+    # event. Data events are billed per event; see docs/RUNBOOK.md.
+    data_resource {
+      type   = "AWS::S3::Object"
+      values = ["${local.data_bucket_arn}/"]
+    }
   }
 
   tags = merge(local.common_tags, {

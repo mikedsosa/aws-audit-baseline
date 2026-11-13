@@ -21,6 +21,12 @@
           "type": "aws_s3_bucket"
         },
         {
+          "address": "aws_s3_account_public_access_block.account",
+          "mode": "managed",
+          "name": "account",
+          "type": "aws_s3_account_public_access_block"
+        },
+        {
           "address": "aws_s3_bucket_ownership_controls.workload_data",
           "mode": "managed",
           "name": "workload_data",
@@ -200,6 +206,26 @@
       "mode": "managed",
       "name": "audit_logs",
       "type": "aws_s3_bucket"
+    },
+    {
+      "address": "aws_s3_account_public_access_block.account",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "account_id": "123456789012",
+          "block_public_acls": true,
+          "block_public_policy": true,
+          "ignore_public_acls": true,
+          "restrict_public_buckets": true
+        },
+        "after_unknown": {},
+        "before": null
+      },
+      "mode": "managed",
+      "name": "account",
+      "type": "aws_s3_account_public_access_block"
     },
     {
       "address": "aws_s3_bucket_ownership_controls.workload_data",
@@ -402,7 +428,7 @@
               "id": "expire-audit-objects",
               "noncurrent_version_expiration": [
                 {
-                  "noncurrent_days": 30
+                  "noncurrent_days": 365
                 }
               ],
               "status": "Enabled"
@@ -466,7 +492,7 @@
           "key_id": "11111111-1111-4111-8111-111111111111",
           "key_usage": "ENCRYPT_DECRYPT",
           "multi_region": false,
-          "policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Sid\": \"EnableAccountRootAdministration\", \"Effect\": \"Allow\", \"Principal\": {\"AWS\": \"arn:aws:iam::123456789012:root\"}, \"Action\": \"kms:*\", \"Resource\": \"*\"}, {\"Sid\": \"AllowWorkloadRoleUse\", \"Effect\": \"Allow\", \"Principal\": {\"AWS\": \"arn:aws:iam::123456789012:role/studybase-workload-operator\"}, \"Action\": [\"kms:Decrypt\", \"kms:DescribeKey\", \"kms:Encrypt\", \"kms:GenerateDataKey\", \"kms:ReEncrypt*\"], \"Resource\": \"*\", \"Condition\": {\"StringEquals\": {\"kms:EncryptionContext:aws:s3:arn\": \"arn:aws:s3:::studybase-123456789012-data\", \"kms:ViaService\": \"s3.us-east-1.amazonaws.com\"}}}]}",
+          "policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Sid\": \"EnableAccountRootAdministration\", \"Effect\": \"Allow\", \"Principal\": {\"AWS\": \"arn:aws:iam::123456789012:root\"}, \"Action\": \"kms:*\", \"Resource\": \"*\"}, {\"Sid\": \"AllowWorkloadRoleUse\", \"Effect\": \"Allow\", \"Principal\": {\"AWS\": \"arn:aws:iam::123456789012:role/studybase-workload-operator\"}, \"Action\": [\"kms:Decrypt\", \"kms:GenerateDataKey\"], \"Resource\": \"*\", \"Condition\": {\"StringEquals\": {\"kms:EncryptionContext:aws:s3:arn\": \"arn:aws:s3:::studybase-123456789012-data\", \"kms:ViaService\": \"s3.us-east-1.amazonaws.com\"}}}]}",
           "rotation_period_in_days": 365,
           "tags": {
             "BaselineComponent": "workload-data",
@@ -497,7 +523,7 @@
           "key_id": "22222222-2222-4222-8222-222222222222",
           "key_usage": "ENCRYPT_DECRYPT",
           "multi_region": false,
-          "policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Sid\": \"EnableAccountRootAdministration\", \"Effect\": \"Allow\", \"Principal\": {\"AWS\": \"arn:aws:iam::123456789012:root\"}, \"Action\": \"kms:*\", \"Resource\": \"*\"}, {\"Sid\": \"AllowCloudTrailEncryptLogs\", \"Effect\": \"Allow\", \"Principal\": {\"Service\": \"cloudtrail.amazonaws.com\"}, \"Action\": \"kms:GenerateDataKey*\", \"Resource\": \"*\", \"Condition\": {\"StringEquals\": {\"aws:SourceArn\": \"arn:aws:cloudtrail:us-east-1:123456789012:trail/studybase-management\"}, \"StringLike\": {\"kms:EncryptionContext:aws:cloudtrail:arn\": \"arn:aws:cloudtrail:*:123456789012:trail/*\"}}}, {\"Sid\": \"AllowCloudTrailDescribeKey\", \"Effect\": \"Allow\", \"Principal\": {\"Service\": \"cloudtrail.amazonaws.com\"}, \"Action\": \"kms:DescribeKey\", \"Resource\": \"*\", \"Condition\": {\"StringEquals\": {\"aws:SourceArn\": \"arn:aws:cloudtrail:us-east-1:123456789012:trail/studybase-management\"}}}, {\"Sid\": \"AllowCloudTrailDecrypt\", \"Effect\": \"Allow\", \"Principal\": {\"Service\": \"cloudtrail.amazonaws.com\"}, \"Action\": \"kms:Decrypt\", \"Resource\": \"*\"}, {\"Sid\": \"AllowAuditorDecrypt\", \"Effect\": \"Allow\", \"Principal\": {\"AWS\": \"arn:aws:iam::123456789012:role/studybase-auditor\"}, \"Action\": \"kms:Decrypt\", \"Resource\": \"*\", \"Condition\": {\"Null\": {\"kms:EncryptionContext:aws:cloudtrail:arn\": \"false\"}}}]}",
+          "policy": "{\"Version\": \"2012-10-17\", \"Statement\": [{\"Sid\": \"EnableAccountRootAdministration\", \"Effect\": \"Allow\", \"Principal\": {\"AWS\": \"arn:aws:iam::123456789012:root\"}, \"Action\": \"kms:*\", \"Resource\": \"*\"}, {\"Sid\": \"AllowCloudTrailEncryptLogs\", \"Effect\": \"Allow\", \"Principal\": {\"Service\": \"cloudtrail.amazonaws.com\"}, \"Action\": \"kms:GenerateDataKey*\", \"Resource\": \"*\", \"Condition\": {\"StringEquals\": {\"aws:SourceArn\": \"arn:aws:cloudtrail:us-east-1:123456789012:trail/studybase-management\"}, \"StringLike\": {\"kms:EncryptionContext:aws:cloudtrail:arn\": \"arn:aws:cloudtrail:*:123456789012:trail/*\"}}}, {\"Sid\": \"AllowCloudTrailDescribeKey\", \"Effect\": \"Allow\", \"Principal\": {\"Service\": \"cloudtrail.amazonaws.com\"}, \"Action\": \"kms:DescribeKey\", \"Resource\": \"*\", \"Condition\": {\"StringEquals\": {\"aws:SourceArn\": \"arn:aws:cloudtrail:us-east-1:123456789012:trail/studybase-management\"}}}, {\"Sid\": \"AllowCloudTrailDecrypt\", \"Effect\": \"Allow\", \"Principal\": {\"Service\": \"cloudtrail.amazonaws.com\"}, \"Action\": \"kms:Decrypt\", \"Resource\": \"*\"}, {\"Sid\": \"AllowAuditorDecrypt\", \"Effect\": \"Allow\", \"Principal\": {\"AWS\": \"arn:aws:iam::123456789012:role/studybase-auditor\"}, \"Action\": \"kms:Decrypt\", \"Resource\": \"*\", \"Condition\": {\"Null\": {\"kms:EncryptionContext:aws:cloudtrail:arn\": \"false\"}, \"StringEquals\": {\"kms:ViaService\": \"s3.us-east-1.amazonaws.com\"}}}]}",
           "rotation_period_in_days": 365,
           "tags": {
             "BaselineComponent": "audit-logs",
@@ -561,7 +587,14 @@
           "enable_logging": true,
           "event_selector": [
             {
-              "data_resource": [],
+              "data_resource": [
+                {
+                  "type": "AWS::S3::Object",
+                  "values": [
+                    "arn:aws:s3:::studybase-123456789012-data/"
+                  ]
+                }
+              ],
               "exclude_management_event_sources": [],
               "include_management_events": true,
               "read_write_type": "All"

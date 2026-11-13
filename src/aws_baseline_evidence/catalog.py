@@ -15,8 +15,10 @@ SUPPORTED_TYPES = frozenset(
         "aws_iam_role_policy",
         "aws_kms_alias",
         "aws_kms_key",
+        "aws_s3_account_public_access_block",
         "aws_s3_bucket",
         "aws_s3_bucket_lifecycle_configuration",
+        "aws_s3_bucket_object_lock_configuration",
         "aws_s3_bucket_ownership_controls",
         "aws_s3_bucket_policy",
         "aws_s3_bucket_public_access_block",
@@ -67,6 +69,52 @@ AUDITOR_ACTIONS = frozenset(
     }
 )
 
+# Stated minimum retention for CloudTrail log objects and their noncurrent
+# versions. Matches the audit_log_retention_days lower bound in variables.tf.
+AUDIT_RETENTION_FLOOR_DAYS = 365
+
+OBJECT_LOCK_MODES = frozenset({"COMPLIANCE", "GOVERNANCE"})
+
+# Actions that could stop, redirect, or erase the audit trail or its keys.
+# No baseline role may be allowed any of these, directly or through a wildcard.
+TAMPER_ACTIONS = frozenset(
+    {
+        "cloudtrail:DeleteTrail",
+        "cloudtrail:PutEventSelectors",
+        "cloudtrail:PutInsightSelectors",
+        "cloudtrail:StopLogging",
+        "cloudtrail:UpdateTrail",
+        "iam:AttachRolePolicy",
+        "iam:PutRolePolicy",
+        "iam:UpdateAssumeRolePolicy",
+        "kms:CreateGrant",
+        "kms:DisableKey",
+        "kms:PutKeyPolicy",
+        "kms:ScheduleKeyDeletion",
+        "s3:BypassGovernanceRetention",
+        "s3:DeleteBucketPolicy",
+        "s3:PutAccountPublicAccessBlock",
+        "s3:PutBucketObjectLockConfiguration",
+        "s3:PutBucketPolicy",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:PutBucketVersioning",
+        "s3:PutLifecycleConfiguration",
+        "s3:PutObjectRetention",
+    }
+)
+
+# Key policy actions a non-root statement may grant. Anything else, including
+# kms:Encrypt, kms:ReEncrypt*, kms:CreateGrant, or an admin action, fails
+# KMS-SCOPE-001.
+KEY_USE_ACTIONS = frozenset(
+    {
+        "kms:Decrypt",
+        "kms:DescribeKey",
+        "kms:GenerateDataKey",
+        "kms:GenerateDataKey*",
+    }
+)
+
 RULES: tuple[tuple[str, str], ...] = (
     (
         "BASE-COMP-001",
@@ -91,6 +139,10 @@ RULES: tuple[tuple[str, str], ...] = (
     (
         "S3-BPA-001",
         "Each bucket has one public access block and all four settings are true.",
+    ),
+    (
+        "S3-ACCT-BPA-001",
+        "The plan sets account-level S3 Block Public Access for this account with all four settings true.",
     ),
     (
         "S3-ENC-001",
@@ -126,11 +178,15 @@ RULES: tuple[tuple[str, str], ...] = (
     ),
     (
         "S3-LOCK-001",
-        "Object Lock is explicitly off. A pass means the draft left it off, not that logs are immutable.",
+        "Workload Object Lock is explicitly off. The audit bucket either has Object Lock explicitly off, which is not an immutability claim, or has it on with a GOVERNANCE or COMPLIANCE default retention of at least the retention floor.",
     ),
     (
         "S3-LIFE-001",
         "Lifecycle aborts incomplete uploads, expires audit objects on the baseline window, and does not expire current workload objects.",
+    ),
+    (
+        "S3-RET-001",
+        "No enabled audit lifecycle rule can delete a current or noncurrent log version before the stated retention floor, and noncurrent versions are kept at least as long as current ones.",
     ),
     (
         "KMS-ROT-001",
@@ -147,6 +203,10 @@ RULES: tuple[tuple[str, str], ...] = (
     (
         "KMS-POL-001",
         "Key policies match the baseline statements: account root, workload use, CloudTrail, and auditor decrypt.",
+    ),
+    (
+        "KMS-SCOPE-001",
+        "Outside the account-root statement, key policy allows grant only key-use actions, never to a wildcard principal, and always with a condition.",
     ),
     (
         "KMS-ALIAS-001",
@@ -170,7 +230,7 @@ RULES: tuple[tuple[str, str], ...] = (
     ),
     (
         "CT-DATA-001",
-        "Data events, advanced selectors, and Insights are explicitly empty. Empty is not proof that object access is logged.",
+        "Management events are explicit, and the only data resource is S3 object events for the workload bucket. The audit bucket is not a data resource. Advanced and Insights selectors are empty.",
     ),
     (
         "IAM-TRUST-001",
@@ -181,6 +241,10 @@ RULES: tuple[tuple[str, str], ...] = (
         "Inline role policies stay inside the workload prefix and the auditor read set.",
     ),
     (
+        "IAM-TAMPER-001",
+        "No baseline role inline policy allows an action that could stop the trail, change its selectors, rewrite bucket or key policy, shorten retention, or schedule key deletion.",
+    ),
+    (
         "IAM-SESSION-001",
         "Each role max_session_duration is 3600 seconds or less.",
     ),
@@ -188,24 +252,28 @@ RULES: tuple[tuple[str, str], ...] = (
 
 NOT_ASSESSED: tuple[tuple[str, str], ...] = (
     (
-        "account-and-organization-public-access-block",
-        "Bucket public access blocks do not set or prove account or organization S3 Block Public Access.",
+        "organization-public-access-block",
+        "The plan can set account-level Block Public Access. It does not set or prove an AWS Organizations S3 policy.",
+    ),
+    (
+        "organization-trail-scope",
+        "The trail is a single-account trail. An organization trail must be created from the management account or a delegated administrator and is not modeled here.",
     ),
     (
         "organization-scps-rcps-permission-boundaries",
         "This plan is not an AWS Organizations policy and does not show SCPs, RCPs, or permission boundaries.",
     ),
     (
-        "s3-object-lock-and-mfa-delete",
-        "Object Lock and MFA Delete are not enabled. Versioning alone does not make logs immutable.",
+        "s3-object-lock-default-off-and-mfa-delete",
+        "Object Lock on the audit bucket is opt-in and off in the example plan. MFA Delete is not enabled; the CloudTrail best-practices page says it cannot be used with lifecycle configurations.",
     ),
     (
         "s3-server-access-logging",
         "S3 server access logging is not configured. CloudTrail management events are not object access logs.",
     ),
     (
-        "cloudtrail-data-events",
-        "S3 object-level data events are not enabled. Management events do not record GetObject or PutObject data events.",
+        "cloudtrail-data-events-other-resources",
+        "Data events are selected for workload bucket objects only. Other buckets, Lambda, DynamoDB, and other data event types are not logged.",
     ),
     (
         "cloudtrail-insights-lake-cloudwatch-eventbridge",
@@ -221,7 +289,7 @@ NOT_ASSESSED: tuple[tuple[str, str], ...] = (
     ),
     (
         "guardduty-securityhub-config-analyzer-macie",
-        "GuardDuty, Security Hub, AWS Config, IAM Access Analyzer, and Macie are not deployed or queried.",
+        "GuardDuty, Security Hub, AWS Config, IAM Access Analyzer, and Macie are not deployed or queried. An account allows one account-level analyzer per type per Region, so this stack does not create one.",
     ),
     (
         "network-controls",
@@ -234,6 +302,10 @@ NOT_ASSESSED: tuple[tuple[str, str], ...] = (
     (
         "other-iam-in-the-account",
         "Account-root kms:* delegates key administration to IAM. Other IAM policies in the account are invisible here.",
+    ),
+    (
+        "audit-bucket-overwrite-by-iam",
+        "The audit bucket policy does not deny PutObject from IAM callers that send aws:kms. An overwrite keeps the old version as noncurrent for the retention period but is not blocked.",
     ),
     (
         "cloudtrail-kms-decrypt-source-arn",

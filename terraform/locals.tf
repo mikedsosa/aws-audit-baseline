@@ -9,6 +9,8 @@ locals {
   log_prefix          = "cloudtrail"
   workload_key_prefix = "app/"
 
+  audit_object_lock_on = var.audit_object_lock_mode != "OFF"
+
   trail_arn         = "arn:${var.aws_partition}:cloudtrail:${var.aws_region}:${var.account_id}:trail/${local.trail_name}"
   workload_role_arn = "arn:${var.aws_partition}:iam::${var.account_id}:role/${local.workload_role_name}"
   auditor_role_arn  = "arn:${var.aws_partition}:iam::${var.account_id}:role/${local.auditor_role_name}"
@@ -168,12 +170,12 @@ locals {
         Principal = {
           AWS = local.workload_role_arn
         }
+        # The S3 SSE-KMS page lists kms:GenerateDataKey for PutObject and
+        # kms:Decrypt for GetObject and multipart upload. Encrypt, ReEncrypt*,
+        # and DescribeKey were removed in the 2026-11-13 review.
         Action = [
-          "kms:Encrypt",
           "kms:Decrypt",
-          "kms:ReEncrypt*",
           "kms:GenerateDataKey",
-          "kms:DescribeKey",
         ]
         Resource = "*"
         Condition = {
@@ -249,6 +251,10 @@ locals {
         Condition = {
           Null = {
             "kms:EncryptionContext:aws:cloudtrail:arn" = "false"
+          }
+          # Decrypt only through S3 reads of the log objects, not direct KMS calls.
+          StringEquals = {
+            "kms:ViaService" = "s3.${var.aws_region}.amazonaws.com"
           }
         }
       },

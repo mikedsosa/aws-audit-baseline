@@ -188,6 +188,7 @@ def test_committed_synthetic_fixtures_match_the_factory() -> None:
         compliant_document,
         missing_public_access_document,
         noncompliant_document,
+        object_lock_document,
         unknown_document,
     )
 
@@ -197,6 +198,7 @@ def test_committed_synthetic_fixtures_match_the_factory() -> None:
         "synthetic-unknown.json": unknown_document(),
         "synthetic-missing-public-access.json": missing_public_access_document(),
         "synthetic-absent-force-destroy.json": absent_force_destroy_document(),
+        "synthetic-object-lock.json": object_lock_document(),
     }
     root = Path("tests/fixtures")
     for name, document in expected.items():
